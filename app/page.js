@@ -1,65 +1,169 @@
-import Image from "next/image";
+import TrafficChart from "@/components/charts/TrafficChart";
+import CountryInstallsBarChart from "@/components/charts/CountryInstallsBarChart";
+import TrafficSourcesPieChart from "@/components/charts/TrafficSourcesPieChart";
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.js file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen bg-zinc-50">
+      {/* Time range tabs + colorful summary cards */}
+      <section className="mb-6 rounded-3xl bg-white p-5 shadow-[0_18px_40px_rgba(15,23,42,0.12)] ring-1 ring-zinc-100">
+        {/* Tabs */}
+        <div className="flex flex-wrap items-center gap-4 border-b border-zinc-100 px-1 pb-3">
+          {["Last 24 Hour", "Last Week", "Last Month", "Last Quarter"].map(
+            (label, index) => {
+              const isActive = label === "Last Month";
+              return (
+                <button
+                  key={label}
+                  className={`relative pb-1 text-xs font-medium transition-colors ${
+                    isActive
+                      ? "text-zinc-900"
+                      : "text-zinc-400 hover:text-zinc-700"
+                  }`}
+                >
+                  {label}
+                  {isActive && (
+                    <span className="absolute inset-x-0 -bottom-[6px] mx-auto h-[2px] w-10 rounded-full bg-[#3399EF]" />
+                  )}
+                </button>
+              );
+            }
+          )}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* Cards using 3 key metrics + brand colors */}
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          {/* Total installs */}
+          <div className="relative overflow-hidden rounded-2xl bg-[#3399EF] px-5 py-4 text-white shadow-[0_18px_32px_rgba(51,153,239,0.55)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium text-white/80">
+                  Total installs
+                </p>
+                <p className="mt-1 text-2xl font-semibold leading-tight">
+                  210K
+                </p>
+                <p className="mt-1 text-[11px] text-white/70">
+                  Feb 11 – Mar 10
+                </p>
+              </div>
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-xs">
+                📈
+              </div>
+            </div>
+            <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-emerald-600">
+              <span className="text-xs">↗</span>
+              <span>+687</span>
+              <span className="text-zinc-500">Since last period</span>
+            </div>
+          </div>
+
+          {/* User acquisitions */}
+          <div className="relative overflow-hidden rounded-2xl bg-[#FE20CC] px-5 py-4 text-white shadow-[0_18px_32px_rgba(254,32,204,0.55)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium text-white/85">
+                  User acquisitions
+                </p>
+                <p className="mt-1 text-2xl font-semibold leading-tight">
+                  52.3
+                </p>
+                <p className="mt-1 text-[11px] text-white/70">
+                  average · Feb 11 – Mar 10
+                </p>
+              </div>
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-xs">
+                👤
+              </div>
+            </div>
+            <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-rose-600">
+              <span className="text-xs">↘</span>
+              <span>-68%</span>
+              <span className="text-zinc-500">vs previous period</span>
+            </div>
+          </div>
+
+          {/* Daily active users */}
+          <div className="relative overflow-hidden rounded-2xl bg-[#FE5E2C] px-5 py-4 text-white shadow-[0_18px_32px_rgba(254,94,44,0.55)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium text-white/85">
+                  Daily active users
+                </p>
+                <p className="mt-1 text-2xl font-semibold leading-tight">
+                  409
+                </p>
+                <p className="mt-1 text-[11px] text-white/70">
+                  average · Feb 11 – Mar 10
+                </p>
+              </div>
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-xs">
+                📊
+              </div>
+            </div>
+            <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-rose-600">
+              <span className="text-xs">↘</span>
+              <span>-48%</span>
+              <span className="text-zinc-500">vs previous period</span>
+            </div>
+          </div>
         </div>
-      </main>
-    </div>
+      </section>
+
+      {/* Lower charts */}
+      <section className="mt-6 grid gap-4 lg:grid-cols-[2fr,1.2fr]">
+        <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-zinc-100">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-zinc-900">
+              Traffic & conversion
+            </p>
+            <span className="text-[11px] text-zinc-500">Realtime sample</span>
+          </div>
+          <div className="mt-4 h-64 rounded-2xl bg-zinc-50 px-2 py-2">
+            <TrafficChart />
+          </div>
+        </div>
+
+        <div className="grid gap-4">
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
+            <p className="text-sm font-semibold text-zinc-900">
+              Installs by country
+            </p>
+            <div className="mt-3 h-40 rounded-xl bg-zinc-50 px-2 py-2">
+              <CountryInstallsBarChart />
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
+            <p className="text-sm font-semibold text-zinc-900">
+              Acquisition sources
+            </p>
+            <div className="mt-3 flex items-center gap-3">
+              <div className="h-72 flex-1 rounded-xl bg-zinc-50 px-2 py-2">
+                <TrafficSourcesPieChart />
+              </div>
+              <ul className="hidden flex-1 space-y-1 text-[11px] text-zinc-500 sm:block">
+                <li>
+                  <span className="inline-block h-2 w-2 rounded-full bg-[#3399EF] mr-2" />
+                  Search · 45%
+                </li>
+                <li>
+                  <span className="inline-block h-2 w-2 rounded-full bg-[#FE20CC] mr-2" />
+                  Browse · 25%
+                </li>
+                <li>
+                  <span className="inline-block h-2 w-2 rounded-full bg-[#FE5E2C] mr-2" />
+                  Referral · 18%
+                </li>
+                <li>
+                  <span className="inline-block h-2 w-2 rounded-full bg-[#22C55E] mr-2" />
+                  Ad campaigns · 12%
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }
