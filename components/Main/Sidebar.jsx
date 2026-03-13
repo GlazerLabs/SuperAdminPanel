@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuthStore } from "@/zustand/auth";
 
 const primaryNav = [
   { label: "Dashboard", href: "/", icon: "grid" },
@@ -15,6 +16,7 @@ const primaryNav = [
 const secondaryNav = [
   { label: "Setting", href: "/settings", icon: "settings" },
   { label: "Help Center", href: "/help", icon: "help" },
+  { label: "Logout", icon: "logout", action: "logout" },
 ];
 
 function NavIcon({ type, active }) {
@@ -77,12 +79,20 @@ function NavIcon({ type, active }) {
           <circle cx="12" cy="16" r="0.7" />
         </svg>
       );
+    case "logout":
+      return (
+        <svg viewBox="0 0 24 24" className={base} fill="none" aria-hidden="true">
+          <path d="M10 6H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h4" />
+          <path d="M14 16l4-4-4-4" />
+          <path d="M9 12h9" />
+        </svg>
+      );
     default:
       return null;
   }
 }
 
-function NavSection({ title, items, pathname }) {
+function NavSection({ title, items, pathname, onLogout }) {
   return (
     <div className="mt-8">
       <p className="px-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
@@ -90,6 +100,20 @@ function NavSection({ title, items, pathname }) {
       </p>
       <div className="mt-3 space-y-0.5">
         {items.map((item) => {
+          if (item.action === "logout") {
+            return (
+              <button
+                key="logout"
+                type="button"
+                onClick={onLogout}
+                className="flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-[15px] font-medium text-red-200 transition-all hover:bg-red-500/10 hover:text-red-100"
+              >
+                <NavIcon type={item.icon} active={false} />
+                <span className="truncate">{item.label}</span>
+              </button>
+            );
+          }
+
           const active = item.matchPrefix ? pathname?.startsWith(item.href) : pathname === item.href;
           return (
             <Link
@@ -113,6 +137,13 @@ function NavSection({ title, items, pathname }) {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const logout = useAuthStore((state) => state.logout);
+
+  const handleLogout = () => {
+    logout();
+    router.push("/login");
+  };
 
   return (
     <aside className="flex h-full flex-col bg-slate-900">
@@ -128,7 +159,12 @@ export default function Sidebar() {
 
       <div className="flex-1 overflow-y-auto px-2 pb-4 pt-2">
         <NavSection title="Menu" items={primaryNav} pathname={pathname} />
-        <NavSection title="Others" items={secondaryNav} pathname={pathname} />
+        <NavSection
+          title="Others"
+          items={secondaryNav}
+          pathname={pathname}
+          onLogout={handleLogout}
+        />
       </div>
 
       <div className="border-t border-white/10 px-4 py-4">
