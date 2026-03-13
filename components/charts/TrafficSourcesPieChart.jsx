@@ -10,19 +10,17 @@ const data = [
   { name: "Ad campaigns", value: 12 },
 ];
 
-const COLORS = ["#3399EF", "#FE20CC", "#FE5E2C", "#22C55E"];
+const COLORS = ["#4f46e5", "#7c3aed", "#d97706", "#059669"];
 
 function SourcesTooltip({ active, payload }) {
-  if (!active || !payload || !payload.length) return null;
-
+  if (!active || !payload?.length) return null;
   const { name, value } = payload[0];
 
   return (
-    <div className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-[11px] shadow-sm">
-      <div className="font-medium text-zinc-800">{name}</div>
-      <div className="mt-1 text-zinc-500">
-        Share:{" "}
-        <span className="font-medium text-zinc-800">{value}%</span>
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-xl">
+      <div className="font-semibold text-slate-900">{name}</div>
+      <div className="mt-1.5 text-slate-600">
+        Share: <span className="font-semibold text-slate-900">{value}%</span>
       </div>
     </div>
   );

@@ -1,26 +1,206 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --accent: #4f46e5;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
   }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* App loader top progress bar */
+@keyframes app-loader-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(200%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes row-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Card entrance: fade-up with stagger for first 3 children */
+.card-fade-up {
+  animation: fade-up 0.55s ease-out both;
+}
+.card-fade-up:nth-child(1) { animation-delay: 0s; }
+.card-fade-up:nth-child(2) { animation-delay: 0.08s; }
+.card-fade-up:nth-child(3) { animation-delay: 0.16s; }
+
+/* Dashboard KPI cards stagger */
+.dashboard-card-fade-up {
+  animation: fade-up 0.5s ease-out both;
+}
+.dashboard-card-fade-up:nth-child(1) { animation-delay: 0s; }
+.dashboard-card-fade-up:nth-child(2) { animation-delay: 0.07s; }
+.dashboard-card-fade-up:nth-child(3) { animation-delay: 0.14s; }
+
+/* Role cards: stagger entrance */
+.role-card-enter {
+  animation: fade-up 0.4s ease-out both;
+}
+.role-card-enter:nth-child(1) { animation-delay: 0.02s; }
+.role-card-enter:nth-child(2) { animation-delay: 0.06s; }
+.role-card-enter:nth-child(3) { animation-delay: 0.1s; }
+.role-card-enter:nth-child(4) { animation-delay: 0.14s; }
+.role-card-enter:nth-child(5) { animation-delay: 0.18s; }
+.role-card-enter:nth-child(6) { animation-delay: 0.22s; }
+.role-card-enter:nth-child(7) { animation-delay: 0.26s; }
+.role-card-enter:nth-child(8) { animation-delay: 0.3s; }
+
+/* Role detail page enter */
+.role-detail-enter {
+  animation: fade-up 0.35s ease-out both;
+}
+.role-detail-perms-enter {
+  animation: fade-up 0.4s ease-out 0.1s both;
+}
+
+/* Chart sections: slight delay after cards */
+.chart-fade-in {
+  animation: fade-in 0.5s ease-out 0.2s both;
+}
+
+/* Table container + row entrance */
+.table-fade-in {
+  animation: fade-in 0.45s ease-out both;
+}
+
+.table-row-fade-up {
+  animation: row-up 0.35s ease-out both;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Org chart (horizontal tree with connectors) */
+.org-chart--prominent {
+  padding: 18px 12px 8px;
+  border-radius: 18px;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.25) 1px, transparent 0);
+  background-size: 18px 18px;
+  scroll-padding-left: 24px;
+  scroll-padding-right: 24px;
+}
+
+.org-chart {
+  /* Prevent edge clipping for first/last nodes when scrolling */
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.org-chart ul {
+  padding-top: 34px;
+  position: relative;
+  transition: all 0.2s;
+  display: flex;
+  justify-content: center;
+  width: max-content;
+  min-width: 100%;
+}
+
+.org-chart li {
+  list-style-type: none;
+  position: relative;
+  padding: 28px 18px 0 18px;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+/* connector lines */
+.org-chart li::before,
+.org-chart li::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 50%;
+  border-top: 2px solid rgba(100, 116, 139, 0.75); /* slate-500 */
+  width: 50%;
+  height: 28px;
+}
+
+.org-chart li::after {
+  right: auto;
+  left: 50%;
+  border-left: 2px solid rgba(100, 116, 139, 0.75);
+}
+
+/* remove connectors on single child */
+.org-chart li:only-child::after,
+.org-chart li:only-child::before {
+  display: none;
+}
+
+.org-chart li:only-child {
+  padding-top: 0;
+}
+
+/* remove left connectors from first child and right connectors from last child */
+.org-chart li:first-child::before,
+.org-chart li:last-child::after {
+  border: 0 none;
+}
+
+.org-chart li:last-child::before {
+  border-right: 2px solid rgba(100, 116, 139, 0.75);
+  border-radius: 0 8px 0 0;
+}
+
+.org-chart li:first-child::after {
+  border-radius: 8px 0 0 0;
+}
+
+/* vertical line to children */
+.org-chart ul ul::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  border-left: 2px solid rgba(100, 116, 139, 0.75);
+  width: 0;
+  height: 28px;
+}
+
+.org-chart .org-node {
+  display: inline-block;
 }

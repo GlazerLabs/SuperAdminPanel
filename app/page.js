@@ -1,162 +1,140 @@
-import TrafficChart from "@/components/charts/TrafficChart";
+import TrafficChartContainer from "@/components/charts/TrafficChartContainer";
 import CountryInstallsBarChart from "@/components/charts/CountryInstallsBarChart";
 import TrafficSourcesPieChart from "@/components/charts/TrafficSourcesPieChart";
 
+const PERIODS = ["Last 24 Hour", "Last Week", "Last Month", "Last Quarter"];
+
 export default function Home() {
+  const activePeriod = "Last Month";
+
   return (
-    <main className="min-h-screen bg-zinc-50">
-      {/* Time range tabs + colorful summary cards */}
-      <section className="mb-6 rounded-3xl bg-white p-5 shadow-[0_18px_40px_rgba(15,23,42,0.12)] ring-1 ring-zinc-100">
-        {/* Tabs */}
-        <div className="flex flex-wrap items-center gap-4 border-b border-zinc-100 px-1 pb-3">
-          {["Last 24 Hour", "Last Week", "Last Month", "Last Quarter"].map(
-            (label, index) => {
-              const isActive = label === "Last Month";
-              return (
-                <button
-                  key={label}
-                  className={`relative pb-1 text-xs font-medium transition-colors ${
-                    isActive
-                      ? "text-zinc-900"
-                      : "text-zinc-400 hover:text-zinc-700"
-                  }`}
-                >
-                  {label}
-                  {isActive && (
-                    <span className="absolute inset-x-0 -bottom-[6px] mx-auto h-[2px] w-10 rounded-full bg-[#3399EF]" />
-                  )}
-                </button>
-              );
-            }
-          )}
+    <main className="min-h-screen bg-slate-50">
+      {/* Hero + period */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+          Dashboard
+        </h1>
+        <p className="mt-1 text-slate-600">
+          Platform health and key metrics at a glance.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {PERIODS.map((label) => (
+            <button
+              key={label}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                label === activePeriod
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25"
+                  : "bg-white text-slate-600 shadow-sm ring-1 ring-slate-200/80 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
+      </div>
 
-        {/* Cards using 3 key metrics + brand colors */}
-        <div className="mt-4 grid gap-4 md:grid-cols-3">
-          {/* Total installs */}
-          <div className="relative overflow-hidden rounded-2xl bg-[#3399EF] px-5 py-4 text-white shadow-[0_18px_32px_rgba(51,153,239,0.55)]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-medium text-white/80">
-                  Total installs
-                </p>
-                <p className="mt-1 text-2xl font-semibold leading-tight">
-                  210K
-                </p>
-                <p className="mt-1 text-[11px] text-white/70">
-                  Feb 11 – Mar 10
-                </p>
-              </div>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-xs">
-                📈
-              </div>
-            </div>
-            <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-emerald-600">
-              <span className="text-xs">↗</span>
-              <span>+687</span>
-              <span className="text-zinc-500">Since last period</span>
+      {/* KPI cards — one accent (indigo), bold numbers */}
+      <section className="mb-8">
+        <div className="grid gap-5 sm:grid-cols-3">
+          <div className="dashboard-card-fade-up relative overflow-hidden rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 transition-transform duration-300 hover:scale-[1.02] hover:shadow-lg">
+            <div className="absolute right-0 top-0 h-24 w-24 translate-x-4 -translate-y-4 rounded-full bg-indigo-500/10" />
+            <p className="text-sm font-medium uppercase tracking-wider text-slate-500">
+              Total installs
+            </p>
+            <p className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
+              210K
+            </p>
+            <p className="mt-1 text-sm text-slate-500">Feb 11 – Mar 10</p>
+            <div className="mt-4 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-sm font-semibold text-emerald-700">
+                ↗ +687
+              </span>
+              <span className="text-sm text-slate-500">vs last period</span>
             </div>
           </div>
 
-          {/* User acquisitions */}
-          <div className="relative overflow-hidden rounded-2xl bg-[#FE20CC] px-5 py-4 text-white shadow-[0_18px_32px_rgba(254,32,204,0.55)]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-medium text-white/85">
-                  User acquisitions
-                </p>
-                <p className="mt-1 text-2xl font-semibold leading-tight">
-                  52.3
-                </p>
-                <p className="mt-1 text-[11px] text-white/70">
-                  average · Feb 11 – Mar 10
-                </p>
-              </div>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-xs">
-                👤
-              </div>
-            </div>
-            <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-rose-600">
-              <span className="text-xs">↘</span>
-              <span>-68%</span>
-              <span className="text-zinc-500">vs previous period</span>
+          <div className="dashboard-card-fade-up relative overflow-hidden rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 transition-transform duration-300 hover:scale-[1.02] hover:shadow-lg">
+            <div className="absolute right-0 top-0 h-24 w-24 translate-x-4 -translate-y-4 rounded-full bg-indigo-500/10" />
+            <p className="text-sm font-medium uppercase tracking-wider text-slate-500">
+              User acquisitions
+            </p>
+            <p className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
+              52.3
+            </p>
+            <p className="mt-1 text-sm text-slate-500">avg · Feb 11 – Mar 10</p>
+            <div className="mt-4 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2.5 py-1 text-sm font-semibold text-rose-700">
+                ↘ -68%
+              </span>
+              <span className="text-sm text-slate-500">vs previous</span>
             </div>
           </div>
 
-          {/* Daily active users */}
-          <div className="relative overflow-hidden rounded-2xl bg-[#FE5E2C] px-5 py-4 text-white shadow-[0_18px_32px_rgba(254,94,44,0.55)]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-medium text-white/85">
-                  Daily active users
-                </p>
-                <p className="mt-1 text-2xl font-semibold leading-tight">
-                  409
-                </p>
-                <p className="mt-1 text-[11px] text-white/70">
-                  average · Feb 11 – Mar 10
-                </p>
-              </div>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-xs">
-                📊
-              </div>
-            </div>
-            <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-rose-600">
-              <span className="text-xs">↘</span>
-              <span>-48%</span>
-              <span className="text-zinc-500">vs previous period</span>
+          <div className="dashboard-card-fade-up relative overflow-hidden rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 transition-transform duration-300 hover:scale-[1.02] hover:shadow-lg">
+            <div className="absolute right-0 top-0 h-24 w-24 translate-x-4 -translate-y-4 rounded-full bg-indigo-500/10" />
+            <p className="text-sm font-medium uppercase tracking-wider text-slate-500">
+              Daily active users
+            </p>
+            <p className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
+              409
+            </p>
+            <p className="mt-1 text-sm text-slate-500">avg · Feb 11 – Mar 10</p>
+            <div className="mt-4 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2.5 py-1 text-sm font-semibold text-rose-700">
+                ↘ -48%
+              </span>
+              <span className="text-sm text-slate-500">vs previous</span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Lower charts */}
-      <section className="mt-6 grid gap-4 lg:grid-cols-[2fr,1.2fr]">
-        <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-zinc-100">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-zinc-900">
-              Traffic & conversion
-            </p>
-            <span className="text-[11px] text-zinc-500">Realtime sample</span>
+      {/* Charts — more space, clear sections */}
+      <section className="chart-fade-in grid gap-6 lg:grid-cols-[1.6fr,1fr]">
+        <div className="rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold text-slate-900">
+              Usage & revenue trends
+            </h2>
           </div>
-          <div className="mt-4 h-64 rounded-2xl bg-zinc-50 px-2 py-2">
-            <TrafficChart />
+          <div className="mt-5 h-[340px] sm:h-[400px]">
+            <TrafficChartContainer />
           </div>
         </div>
 
-        <div className="grid gap-4">
-          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
-            <p className="text-sm font-semibold text-zinc-900">
+        <div className="flex flex-col gap-6">
+          <div className="rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80">
+            <h2 className="text-xl font-semibold text-slate-900">
               Installs by country
-            </p>
-            <div className="mt-3 h-40 rounded-xl bg-zinc-50 px-2 py-2">
+            </h2>
+            <div className="mt-5 h-72">
               <CountryInstallsBarChart />
             </div>
           </div>
 
-          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
-            <p className="text-sm font-semibold text-zinc-900">
+          <div className="rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80">
+            <h2 className="text-xl font-semibold text-slate-900">
               Acquisition sources
-            </p>
-            <div className="mt-3 flex items-center gap-3">
-              <div className="h-72 flex-1 rounded-xl bg-zinc-50 px-2 py-2">
+            </h2>
+            <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center">
+              <div className="h-64 flex-1 sm:h-72">
                 <TrafficSourcesPieChart />
               </div>
-              <ul className="hidden flex-1 space-y-1 text-[11px] text-zinc-500 sm:block">
-                <li>
-                  <span className="inline-block h-2 w-2 rounded-full bg-[#3399EF] mr-2" />
+              <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600 sm:flex-col">
+                <li className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full bg-indigo-500" />
                   Search · 45%
                 </li>
-                <li>
-                  <span className="inline-block h-2 w-2 rounded-full bg-[#FE20CC] mr-2" />
+                <li className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full bg-violet-500" />
                   Browse · 25%
                 </li>
-                <li>
-                  <span className="inline-block h-2 w-2 rounded-full bg-[#FE5E2C] mr-2" />
+                <li className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full bg-amber-500" />
                   Referral · 18%
                 </li>
-                <li>
-                  <span className="inline-block h-2 w-2 rounded-full bg-[#22C55E] mr-2" />
+                <li className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full bg-emerald-500" />
                   Ad campaigns · 12%
                 </li>
               </ul>

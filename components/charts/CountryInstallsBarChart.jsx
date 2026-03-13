@@ -9,7 +9,6 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-// Dummy installs by country (could map to Play Store country breakdown)
 const data = [
   { country: "US", installs: 82000 },
   { country: "IN", installs: 64000 },
@@ -19,43 +18,44 @@ const data = [
 ];
 
 function CountryTooltip({ active, payload, label }) {
-  if (!active || !payload || !payload.length) return null;
-
-  const point = payload[0];
+  if (!active || !payload?.length) return null;
+  const value = payload[0]?.value;
 
   return (
-    <div className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-[11px] shadow-sm">
-      <div className="font-medium text-zinc-800">{label}</div>
-      <div className="mt-1 text-zinc-500">
-        Installs:{" "}
-        <span className="font-medium text-zinc-800">
-          {point.value?.toLocaleString()}
-        </span>
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-xl">
+      <div className="font-semibold text-slate-900">{label}</div>
+      <div className="mt-1.5 text-slate-600">
+        Installs: <span className="font-semibold text-slate-900">{value?.toLocaleString()}</span>
       </div>
     </div>
   );
 }
 
+const INDIGO = "#4f46e5";
+const tickStyle = { fontSize: 13, fill: "#64748b", fontWeight: 500 };
+
 export default function CountryInstallsBarChart() {
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={data} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+      <BarChart data={data} margin={{ top: 10, right: 8, left: 0, bottom: 4 }}>
         <XAxis
           dataKey="country"
           tickLine={false}
           axisLine={false}
           tickMargin={8}
-          tick={{ fontSize: 10, fill: "#9ca3af" }}
+          tick={tickStyle}
         />
-        <YAxis hide />
-        <Tooltip content={<CountryTooltip />} cursor={{ fill: "rgba(148,163,184,0.15)" }} />
-        <Bar
-          dataKey="installs"
-          radius={[8, 8, 0, 0]}
-          fill="#3399EF"
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          tick={tickStyle}
+          tickFormatter={(v) => (v >= 1000 ? `${v / 1000}K` : String(v))}
+          width={40}
         />
+        <Tooltip content={<CountryTooltip />} cursor={{ fill: "rgba(79,70,229,0.06)" }} />
+        <Bar dataKey="installs" radius={[6, 6, 0, 0]} fill={INDIGO} name="Installs" />
       </BarChart>
     </ResponsiveContainer>
   );
 }
-

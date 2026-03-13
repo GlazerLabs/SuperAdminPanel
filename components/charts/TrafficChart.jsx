@@ -7,41 +7,40 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
+  Legend,
 } from "recharts";
 
-// Dummy data roughly matching what you might get from Google Play metrics
-const data = [
-  { date: "Feb 11", installs: 209000, dau: 900 },
-  { date: "Feb 15", installs: 209150, dau: 820 },
-  { date: "Feb 20", installs: 209320, dau: 760 },
-  { date: "Feb 25", installs: 209550, dau: 710 },
-  { date: "Mar 1", installs: 209900, dau: 650 },
-  { date: "Mar 5", installs: 210200, dau: 610 },
-  { date: "Mar 10", installs: 210600, dau: 580 },
+const FALLBACK_DATA = [
+  { date: "Feb 11", activeUsers: 900, totalRevenue: 1200 },
+  { date: "Feb 15", activeUsers: 820, totalRevenue: 900 },
+  { date: "Feb 20", activeUsers: 760, totalRevenue: 750 },
+  { date: "Feb 25", activeUsers: 710, totalRevenue: 680 },
+  { date: "Mar 1", activeUsers: 650, totalRevenue: 640 },
+  { date: "Mar 5", activeUsers: 610, totalRevenue: 620 },
+  { date: "Mar 10", activeUsers: 580, totalRevenue: 610 },
 ];
 
 function TrafficTooltip({ active, payload, label }) {
-  if (!active || !payload || !payload.length) return null;
-
-  const installs = payload.find((p) => p.dataKey === "installs")?.value;
-  const dau = payload.find((p) => p.dataKey === "dau")?.value;
+  if (!active || !payload?.length) return null;
+  const activeUsers = payload.find((p) => p.dataKey === "activeUsers")?.value;
+  const totalRevenue = payload.find((p) => p.dataKey === "totalRevenue")?.value;
 
   return (
-    <div className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-[11px] shadow-sm">
-      <div className="font-medium text-zinc-800">{label}</div>
-      {installs != null && (
-        <div className="mt-1 text-zinc-500">
-          Installs:{" "}
-          <span className="font-medium text-zinc-800">
-            {installs.toLocaleString()}
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-xl">
+      <div className="font-semibold text-slate-900">{label}</div>
+      {activeUsers != null && (
+        <div className="mt-1.5 text-slate-600">
+          Active users:{" "}
+          <span className="font-semibold text-slate-900">
+            {activeUsers.toLocaleString()}
           </span>
         </div>
       )}
-      {dau != null && (
-        <div className="text-zinc-500">
-          Daily active users:{" "}
-          <span className="font-medium text-zinc-800">
-            {dau.toLocaleString()}
+      {totalRevenue != null && (
+        <div className="text-slate-600">
+          Revenue:{" "}
+          <span className="font-semibold text-slate-900">
+            {totalRevenue.toLocaleString()}
           </span>
         </div>
       )}
@@ -49,18 +48,27 @@ function TrafficTooltip({ active, payload, label }) {
   );
 }
 
-export default function TrafficChart() {
+const INDIGO = "#4f46e5";
+const VIOLET = "#7c3aed";
+const tickStyle = { fontSize: 13, fill: "#64748b", fontWeight: 500 };
+
+export default function TrafficChart({ data }) {
+  const chartData = Array.isArray(data) && data.length ? data : FALLBACK_DATA;
+
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={data} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+      <AreaChart
+        data={chartData}
+        margin={{ top: 10, right: 16, left: 0, bottom: 4 }}
+      >
         <defs>
-          <linearGradient id="installsGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3399EF" stopOpacity={0.7} />
-            <stop offset="100%" stopColor="#3399EF" stopOpacity={0.05} />
+          <linearGradient id="trafficInstallsGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={INDIGO} stopOpacity={0.35} />
+            <stop offset="100%" stopColor={INDIGO} stopOpacity={0.02} />
           </linearGradient>
-          <linearGradient id="dauGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#FE5E2C" stopOpacity={0.7} />
-            <stop offset="100%" stopColor="#FE5E2C" stopOpacity={0.05} />
+          <linearGradient id="trafficDauGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={VIOLET} stopOpacity={0.3} />
+            <stop offset="100%" stopColor={VIOLET} stopOpacity={0.02} />
           </linearGradient>
         </defs>
 
@@ -69,32 +77,41 @@ export default function TrafficChart() {
           tickLine={false}
           axisLine={false}
           tickMargin={8}
-          tick={{ fontSize: 10, fill: "#9ca3af" }}
+          tick={tickStyle}
         />
         <YAxis
-          hide
-          domain={["auto", "auto"]}
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          tick={tickStyle}
+          tickFormatter={(v) => (v >= 1000 ? `${v / 1000}K` : String(v))}
+          width={42}
         />
-        <Tooltip content={<TrafficTooltip />} cursor={{ stroke: "#e5e7eb" }} />
+        <Tooltip content={<TrafficTooltip />} cursor={{ stroke: "#cbd5e1", strokeWidth: 1 }} />
+        <Legend
+          wrapperStyle={{ paddingTop: 8 }}
+          formatter={(value) => <span className="text-sm font-medium text-slate-600">{value}</span>}
+          iconType="circle"
+          iconSize={10}
+        />
 
         <Area
           type="monotone"
-          dataKey="installs"
-          stroke="#3399EF"
-          strokeWidth={2}
-          fill="url(#installsGradient)"
-          name="Installs"
+          dataKey="activeUsers"
+          stroke={VIOLET}
+          strokeWidth={2.5}
+          fill="url(#trafficDauGrad)"
+          name="Active users"
         />
         <Area
           type="monotone"
-          dataKey="dau"
-          stroke="#FE5E2C"
-          strokeWidth={2}
-          fill="url(#dauGradient)"
-          name="Daily active users"
+          dataKey="totalRevenue"
+          stroke={INDIGO}
+          strokeWidth={2.5}
+          fill="url(#trafficInstallsGrad)"
+          name="Revenue"
         />
       </AreaChart>
     </ResponsiveContainer>
   );
 }
-

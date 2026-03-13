@@ -32,10 +32,10 @@ export default function RootLayout({ children }) {
           <AppLoader />
         ) : loggedIn ? (
           <div className="flex h-screen overflow-hidden bg-zinc-50">
-            <div className="w-72 shrink-0 h-screen border-r border-white/5 bg-[#050816]">
+            <div className="w-64 shrink-0 border-r border-white/5 bg-slate-900 lg:w-72">
               <Sidebar />
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto bg-zinc-50">
+            <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50">
               <AppHeader />
               <div className="px-6 pb-6 pt-4">{children}</div>
             </div>
