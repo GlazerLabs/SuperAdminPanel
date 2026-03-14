@@ -204,3 +204,11 @@ body {
 .org-chart .org-node {
   display: inline-block;
 }
+
+/* Lead forms: slightly larger inputs */
+.lead-form input,
+.lead-form select,
+.lead-form textarea {
+  padding-top: 0.75rem;  /* ~py-3 */
+  padding-bottom: 0.75rem;
+}
