@@ -1,16 +1,57 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import MembersTable from "@/components/Members/MembersTable";
 import MembersStatsCards from "@/components/Members/MembersStatsCards";
 import AddEditMemberModal from "@/components/Members/AddEditMemberModal";
 import DeleteConfirmModal from "@/components/Members/DeleteConfirmModal";
 import { mockSuperAdmins } from "@/data/membersMockData";
+import { fetchUserTypeCounts } from "@/api";
 
 export default function MembersSuperAdminPage() {
   const [data, setData] = useState(mockSuperAdmins);
   const [editRow, setEditRow] = useState(null);
   const [deleteRow, setDeleteRow] = useState(null);
+
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    total: 0,
+    lastWeek: 0,
+    lastMonth: 0,
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCounts = async () => {
+      try {
+        const response = await fetchUserTypeCounts("super_admin");
+        const list = Array.isArray(response?.data) ? response.data : [];
+        const item = list[0] || {};
+
+        const total = Number(item.super_admin ?? item.total ?? mockSuperAdmins.length) || 0;
+
+        if (isMounted) {
+          setStats({
+            total,
+            lastWeek: 0,
+            lastMonth: 0,
+          });
+        }
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error("Failed to load super admin counts:", error);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadCounts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleEdit = (row) => setEditRow(row);
   const handleDelete = (row) => setDeleteRow(row);
@@ -35,12 +76,20 @@ export default function MembersSuperAdminPage() {
 
   return (
     <>
-      <MembersStatsCards
-        total={data.length}
-        lastWeek={0}
-        lastMonth={0}
-        label="Super Admins"
-      />
+      {loading ? (
+        <section className="mb-6 grid gap-4 sm:grid-cols-3">
+          <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
+          <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
+          <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
+        </section>
+      ) : (
+        <MembersStatsCards
+          total={stats.total}
+          lastWeek={stats.lastWeek}
+          lastMonth={stats.lastMonth}
+          label="Super Admins"
+        />
+      )}
       <MembersTable
         data={data}
         title="Super Admin"
@@ -51,7 +100,7 @@ export default function MembersSuperAdminPage() {
       <AddEditMemberModal
         open={Boolean(editRow)}
         title="Edit Super Admin"
-        initialValues={editRow ? { name: editRow.name, email: editRow.email } : null}
+        initialValues={editRow ? { name: values.name, email: values.email } : null}
         onClose={() => setEditRow(null)}
         onSubmit={handleEditSubmit}
       />

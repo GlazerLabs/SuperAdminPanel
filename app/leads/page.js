@@ -200,8 +200,8 @@ function parseRevenue(lead) {
 }
 
 export default function LeadTrackingPage() {
-  const [leads, setLeads] = useState(SAMPLE_LEADS);
-  const [loading, setLoading] = useState(false);
+  const [leads, setLeads] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
@@ -509,133 +509,147 @@ export default function LeadTrackingPage() {
       </div>
 
       {/* Top: quick health cards */}
-      <section className="grid gap-4 md:grid-cols-3">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-500 to-violet-500 p-5 text-white shadow-lg shadow-indigo-500/30">
-          <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10" />
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-100/90">
-            Total leads
-          </p>
-          <p className="mt-3 text-3xl font-bold tracking-tight">{totalLeads}</p>
-          <p className="mt-1 text-xs text-indigo-100/90">
-            {activeLeads.length} currently active in pipeline
-          </p>
-        </div>
-        <div className="relative overflow-hidden rounded-2xl bg-white p-5 shadow-md shadow-slate-200/70 ring-1 ring-slate-200/90">
-          <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-emerald-100" />
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-            Pipeline (approx.)
-          </p>
-          <p className="mt-3 text-3xl font-bold tracking-tight text-slate-900">
-            ₹{(totalPipeline / 100000).toFixed(1)}L
-          </p>
-          <p className="mt-1 text-xs text-slate-500">Based on expected revenue fields</p>
-        </div>
-        <div className="relative overflow-hidden rounded-2xl bg-white p-5 shadow-md shadow-slate-200/70 ring-1 ring-slate-200/90">
-          <div className="pointer-events-none absolute -left-8 -bottom-8 h-24 w-24 rounded-full bg-sky-100" />
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-            Follow-ups next 7 days
-          </p>
-          <p className="mt-3 text-3xl font-bold tracking-tight text-slate-900">
-            {next7Days.length}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            Keep these hot leads moving
-          </p>
-        </div>
-      </section>
+      {loading ? (
+        <section className="grid gap-4 md:grid-cols-3">
+          <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
+          <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
+          <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
+        </section>
+      ) : (
+        <section className="grid gap-4 md:grid-cols-3">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-500 to-violet-500 p-5 text-white shadow-lg shadow-indigo-500/30">
+            <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10" />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-100/90">
+              Total leads
+            </p>
+            <p className="mt-3 text-3xl font-bold tracking-tight">{totalLeads}</p>
+            <p className="mt-1 text-xs text-indigo-100/90">
+              {activeLeads.length} currently active in pipeline
+            </p>
+          </div>
+          <div className="relative overflow-hidden rounded-2xl bg-white p-5 shadow-md shadow-slate-200/70 ring-1 ring-slate-200/90">
+            <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-emerald-100" />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Pipeline (approx.)
+            </p>
+            <p className="mt-3 text-3xl font-bold tracking-tight text-slate-900">
+              ₹{(totalPipeline / 100000).toFixed(1)}L
+            </p>
+            <p className="mt-1 text-xs text-slate-500">Based on expected revenue fields</p>
+          </div>
+          <div className="relative overflow-hidden rounded-2xl bg-white p-5 shadow-md shadow-slate-200/70 ring-1 ring-slate-200/90">
+            <div className="pointer-events-none absolute -left-8 -bottom-8 h-24 w-24 rounded-full bg-sky-100" />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Follow-ups next 7 days
+            </p>
+            <p className="mt-3 text-3xl font-bold tracking-tight text-slate-900">
+              {next7Days.length}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Keep these hot leads moving
+            </p>
+          </div>
+        </section>
+      )}
 
       {/* Comparison graphs */}
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl bg-white p-4 shadow-md shadow-slate-200/60 ring-1 ring-slate-200/80">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Owner vs pipeline
-              </p>
-              <p className="text-sm font-medium text-slate-900">
-                Approx. value per lead owner
-              </p>
+      {loading ? (
+        <section className="grid gap-4 lg:grid-cols-2">
+          <div className="h-80 animate-pulse rounded-2xl bg-slate-100" />
+          <div className="h-80 animate-pulse rounded-2xl bg-slate-100" />
+        </section>
+      ) : (
+        <section className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl bg-white p-4 shadow-md shadow-slate-200/60 ring-1 ring-slate-200/80">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Owner vs pipeline
+                </p>
+                <p className="text-sm font-medium text-slate-900">
+                  Approx. value per lead owner
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={byOwnerChartData} margin={{ left: -20 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis
+                    dataKey="owner"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 11, fill: "#6b7280" }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 10, fill: "#9ca3af" }}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "rgba(79,70,229,0.03)" }}
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null;
+                      const row = payload[0].payload;
+                      return (
+                        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
+                          <p className="font-semibold text-slate-900">{label}</p>
+                          <p className="mt-1 text-slate-600">
+                            Leads:{" "}
+                            <span className="font-semibold text-slate-900">{row.leads}</span>
+                          </p>
+                          <p className="text-slate-600">
+                            Pipeline:{" "}
+                            <span className="font-semibold text-slate-900">
+                              ₹{(row.value / 100000).toFixed(1)}L
+                            </span>
+                          </p>
+                        </div>
+                      );
+                    }}
+                  />
+                  <Bar dataKey="value" fill="#4f46e5" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
-          <div className="mt-3 h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={byOwnerChartData} margin={{ left: -20 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                <XAxis
-                  dataKey="owner"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 11, fill: "#6b7280" }}
-                />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 10, fill: "#9ca3af" }}
-                />
-                <Tooltip
-                  cursor={{ fill: "rgba(79,70,229,0.03)" }}
-                  content={({ active, payload, label }) => {
-                    if (!active || !payload?.length) return null;
-                    const row = payload[0].payload;
-                    return (
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
-                        <p className="font-semibold text-slate-900">{label}</p>
-                        <p className="mt-1 text-slate-600">
-                          Leads:{" "}
-                          <span className="font-semibold text-slate-900">{row.leads}</span>
-                        </p>
-                        <p className="text-slate-600">
-                          Pipeline:{" "}
-                          <span className="font-semibold text-slate-900">
-                            ₹{(row.value / 100000).toFixed(1)}L
-                          </span>
-                        </p>
-                      </div>
-                    );
-                  }}
-                />
-                <Bar dataKey="value" fill="#4f46e5" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
 
-        <div className="rounded-2xl bg-white p-4 shadow-md shadow-slate-200/60 ring-1 ring-slate-200/80">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Leads by status
-              </p>
-              <p className="text-sm font-medium text-slate-900">
-                Where deals are in the funnel
-              </p>
+          <div className="rounded-2xl bg-white p-4 shadow-md shadow-slate-200/60 ring-1 ring-slate-200/80">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Leads by status
+                </p>
+                <p className="text-sm font-medium text-slate-900">
+                  Where deals are in the funnel
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="mt-3 h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={statusChartData} layout="vertical" margin={{ left: 40 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
-                <XAxis type="number" hide />
-                <YAxis
-                  type="category"
-                  dataKey="status"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 11, fill: "#6b7280" }}
-                />
-                <Tooltip
-                  cursor={{ fill: "rgba(129,140,248,0.06)" }}
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const row = payload[0].payload;
-                    return (
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
-                        <p className="font-semibold text-slate-900">{row.status}</p>
-                        <p className="mt-1 text-slate-600">
-                          Leads:{" "}
-                          <span className="font-semibold text-slate-900">{row.count}</span>
-                        </p>
-                      </div>
+            <div className="mt-3 h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={statusChartData} layout="vertical" margin={{ left: 40 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
+                  <XAxis type="number" hide />
+                  <YAxis
+                    type="category"
+                    dataKey="status"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 11, fill: "#6b7280" }}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "rgba(129,140,248,0.06)" }}
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const row = payload[0].payload;
+                      return (
+                        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
+                          <p className="font-semibold text-slate-900">{row.status}</p>
+                          <p className="mt-1 text-slate-600">
+                            Leads:{" "}
+                            <span className="font-semibold text-slate-900">{row.count}</span>
+                          </p>
+                        </div>
                     );
                   }}
                 />
@@ -645,6 +659,7 @@ export default function LeadTrackingPage() {
           </div>
         </div>
       </section>
+      )}
 
       {/* Leads table */}
       <section className="rounded-2xl bg-white shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 overflow-hidden">
@@ -678,7 +693,36 @@ export default function LeadTrackingPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {leads.length === 0 ? (
+              {loading ? (
+                Array.from({ length: 5 }).map((_, idx) => (
+                  <tr key={idx} className="animate-pulse">
+                    <td className="px-4 py-3">
+                      <div className="h-3.5 w-24 rounded bg-slate-100" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-3.5 w-40 rounded bg-slate-100" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-3.5 w-28 rounded bg-slate-100" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-5 w-24 rounded-full bg-slate-100" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-3.5 w-24 rounded bg-slate-100" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-3.5 w-20 rounded bg-slate-100" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-3.5 w-32 rounded bg-slate-100" />
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="ml-auto h-3.5 w-16 rounded bg-slate-100" />
+                    </td>
+                  </tr>
+                ))
+              ) : leads.length === 0 ? (
                 <tr>
                   <td
                     colSpan={8}

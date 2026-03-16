@@ -1,16 +1,57 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import MembersTable from "@/components/Members/MembersTable";
 import MembersStatsCards from "@/components/Members/MembersStatsCards";
 import AddEditMemberModal from "@/components/Members/AddEditMemberModal";
 import DeleteConfirmModal from "@/components/Members/DeleteConfirmModal";
 import { mockFreelancers } from "@/data/membersMockData";
+import { fetchUserTypeCounts } from "@/api";
 
 export default function MembersFreelancersPage() {
   const [data, setData] = useState(mockFreelancers);
   const [editRow, setEditRow] = useState(null);
   const [deleteRow, setDeleteRow] = useState(null);
+
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    total: 0,
+    lastWeek: 0,
+    lastMonth: 0,
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCounts = async () => {
+      try {
+        const response = await fetchUserTypeCounts("freelancer");
+        const list = Array.isArray(response?.data) ? response.data : [];
+        const item = list[0] || {};
+
+        const total = Number(item.freelancer ?? item.total ?? mockFreelancers.length) || 0;
+
+        if (isMounted) {
+          setStats({
+            total,
+            lastWeek: 0,
+            lastMonth: 0,
+          });
+        }
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error("Failed to load freelancer counts:", error);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadCounts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleEdit = (row) => setEditRow(row);
   const handleDelete = (row) => setDeleteRow(row);
@@ -35,12 +76,20 @@ export default function MembersFreelancersPage() {
 
   return (
     <>
-      <MembersStatsCards
-        total={data.length}
-        lastWeek={1}
-        lastMonth={2}
-        label="Freelancers"
-      />
+      {loading ? (
+        <section className="mb-6 grid gap-4 sm:grid-cols-3">
+          <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
+          <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
+          <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
+        </section>
+      ) : (
+        <MembersStatsCards
+          total={stats.total}
+          lastWeek={stats.lastWeek}
+          lastMonth={stats.lastMonth}
+          label="Freelancers"
+        />
+      )}
       <MembersTable
         data={data}
         title="Freelancer"
