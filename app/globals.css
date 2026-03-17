@@ -31,6 +31,12 @@
   }
 }
 
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 /* App loader top progress bar */
 @keyframes app-loader-progress {
   0% {

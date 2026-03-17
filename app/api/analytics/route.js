@@ -25,6 +25,26 @@ function formatGaDate(gaDate) {
   return `${d}${suffix} ${m}`;
 }
 
+function toYmd(d) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function formatRangeLabel(startYmd, endYmd) {
+  const start = new Date(`${startYmd}T00:00:00`);
+  const end = new Date(`${endYmd}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return `${startYmd} – ${endYmd}`;
+  }
+
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const s = `${months[start.getMonth()]} ${start.getDate()}`;
+  const e = `${months[end.getMonth()]} ${end.getDate()}`;
+  return `${s} – ${e}`;
+}
+
 export async function GET(req) {
   try {
     const analyticsDataClient = new BetaAnalyticsDataClient({
@@ -43,19 +63,116 @@ export async function GET(req) {
     const days = searchParams.get("days");
 
     let dateRanges;
+    let resolvedStartYmd;
+    let resolvedEndYmd;
 
     if (startDate && endDate) {
       // Absolute range: YYYY-MM-DD
       dateRanges = [{ startDate, endDate }];
+      resolvedStartYmd = startDate;
+      resolvedEndYmd = endDate;
     } else if (days) {
       // Relative range: N days ago until today
       dateRanges = [{ startDate: `${days}daysAgo`, endDate: "today" }];
+      const today = new Date();
+      const start = new Date();
+      start.setDate(today.getDate() - (Number(days) - 1));
+      resolvedStartYmd = toYmd(start);
+      resolvedEndYmd = toYmd(today);
     } else {
       // Default: last 7 days
       dateRanges = [{ startDate: "7daysAgo", endDate: "today" }];
+      const today = new Date();
+      const start = new Date();
+      start.setDate(today.getDate() - 6);
+      resolvedStartYmd = toYmd(start);
+      resolvedEndYmd = toYmd(today);
     }
 
-    const [response] = await analyticsDataClient.runReport({
+    // KPI totals for the selected period
+    const [kpiTotalsResponse] = await analyticsDataClient.runReport({
+      property: `properties/${propertyId}`,
+      dateRanges,
+      metrics: [
+        { name: "totalUsers" },
+        { name: "activeUsers" },
+        { name: "sessions" },
+        { name: "userEngagementDuration" },
+      ],
+    });
+
+    const kpiTotalsRow = kpiTotalsResponse.rows?.[0];
+    const totalUsers = Number(kpiTotalsRow?.metricValues?.[0]?.value) || 0;
+    const activeUsers = Number(kpiTotalsRow?.metricValues?.[1]?.value) || 0;
+    const sessions = Number(kpiTotalsRow?.metricValues?.[2]?.value) || 0;
+    const engagementSeconds =
+      Number(kpiTotalsRow?.metricValues?.[3]?.value) || 0;
+    const avgEngagementSeconds = activeUsers > 0 ? engagementSeconds / activeUsers : 0;
+
+    // Total downloads (GA4 best proxy = first_open event count)
+    const [downloadsResponse] = await analyticsDataClient.runReport({
+      property: `properties/${propertyId}`,
+      dateRanges,
+      metrics: [{ name: "eventCount" }],
+      dimensionFilter: {
+        filter: {
+          fieldName: "eventName",
+          stringFilter: {
+            matchType: "EXACT",
+            value: "first_open",
+          },
+        },
+      },
+    });
+    const downloads = Number(downloadsResponse.rows?.[0]?.metricValues?.[0]?.value) || 0;
+
+    // Crash % (proxy = app_exception events / sessions)
+    const [crashResponse] = await analyticsDataClient.runReport({
+      property: `properties/${propertyId}`,
+      dateRanges,
+      metrics: [{ name: "eventCount" }],
+      dimensionFilter: {
+        filter: {
+          fieldName: "eventName",
+          stringFilter: {
+            matchType: "EXACT",
+            value: "app_exception",
+          },
+        },
+      },
+    });
+    const crashEvents = Number(crashResponse.rows?.[0]?.metricValues?.[0]?.value) || 0;
+    const crashPercent = sessions > 0 ? (crashEvents / sessions) * 100 : 0;
+
+    // Ad requests (common events: ad_request / ad_impression).
+    // We query them separately to avoid filter-shape incompatibilities.
+    const getEventCount = async (eventName) => {
+      try {
+        const [res] = await analyticsDataClient.runReport({
+          property: `properties/${propertyId}`,
+          dateRanges,
+          metrics: [{ name: "eventCount" }],
+          dimensionFilter: {
+            filter: {
+              fieldName: "eventName",
+              stringFilter: { matchType: "EXACT", value: eventName },
+            },
+          },
+        });
+        return Number(res.rows?.[0]?.metricValues?.[0]?.value) || 0;
+      } catch (e) {
+        return 0;
+      }
+    };
+
+    const [adRequestEvents, adImpressionEvents] = await Promise.all([
+      getEventCount("ad_request"),
+      getEventCount("ad_impression"),
+    ]);
+    const adRequests = adRequestEvents + adImpressionEvents;
+
+    // Usage & revenue time series
+    const [usageResponse] = await analyticsDataClient.runReport({
       property: `properties/${propertyId}`,
       dateRanges,
       dimensions: [{ name: "date" }],
@@ -63,7 +180,7 @@ export async function GET(req) {
     });
 
     const chartData =
-      response.rows
+      usageResponse.rows
         ?.map((row) => ({
           rawDate: row.dimensionValues[0].value,
           users: parseInt(row.metricValues[0].value) || 0,
@@ -90,9 +207,56 @@ export async function GET(req) {
         ? (((currentRevenue - previousRevenue) / previousRevenue) * 100).toFixed(1)
         : 0;
 
+    // Installs time series (best GA4 proxy = first_open event count)
+    const [installsResponse] = await analyticsDataClient.runReport({
+      property: `properties/${propertyId}`,
+      dateRanges,
+      dimensions: [{ name: "date" }],
+      metrics: [{ name: "eventCount" }],
+      dimensionFilter: {
+        filter: {
+          fieldName: "eventName",
+          stringFilter: {
+            matchType: "EXACT",
+            value: "first_open",
+          },
+        },
+      },
+    });
+
+    const installsChartData =
+      installsResponse.rows
+        ?.map((row) => ({
+          rawDate: row.dimensionValues[0].value,
+          installs: parseInt(row.metricValues[0].value) || 0,
+        }))
+        .sort((a, b) => (a.rawDate > b.rawDate ? 1 : a.rawDate < b.rawDate ? -1 : 0))
+        .map((row) => ({
+          date: formatGaDate(row.rawDate),
+          installs: row.installs,
+        })) || [];
+
+    const totalInstalls = installsChartData.reduce(
+      (sum, row) => sum + (row.installs || 0),
+      0
+    );
+
     return NextResponse.json(
       {
         success: true,
+        range: {
+          startDate: resolvedStartYmd,
+          endDate: resolvedEndYmd,
+          label: formatRangeLabel(resolvedStartYmd, resolvedEndYmd),
+        },
+        kpis: {
+          totalUsers,
+          totalDownloads: downloads,
+          mau: activeUsers,
+          crashPercent: Number(crashPercent.toFixed(2)),
+          avgTimeSpentSeconds: avgEngagementSeconds,
+          adRequests,
+        },
         dau: {
           current: currentDau,
           percentageChange: `${dauChange > 0 ? "+" : ""}${dauChange}`,
@@ -102,6 +266,11 @@ export async function GET(req) {
           current: currentRevenue.toFixed(2),
           percentageChange: `${revenueChange > 0 ? "+" : ""}${revenueChange}`,
           chartData,
+        },
+        installs: {
+          total: totalInstalls,
+          latest: installsChartData[installsChartData.length - 1]?.installs || 0,
+          chartData: installsChartData,
         },
       },
       { status: 200 }
