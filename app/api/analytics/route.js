@@ -45,6 +45,34 @@ function formatRangeLabel(startYmd, endYmd) {
   return `${s} – ${e}`;
 }
 
+function addDaysYmd(ymd, daysToAdd) {
+  const d = new Date(`${ymd}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  d.setDate(d.getDate() + daysToAdd);
+  return toYmd(d);
+}
+
+async function runReportWithLifetimeFallback(analyticsDataClient, request) {
+  try {
+    const [res] = await analyticsDataClient.runReport(request);
+    return res;
+  } catch (e) {
+    const msg = String(e?.message || "");
+    // Example:
+    // "3 INVALID_ARGUMENT: start_date = 2000-01-01 must be greater than 2015-08-13 and less than 3000-01-01."
+    const m = msg.match(/must be greater than (\d{4}-\d{2}-\d{2})/);
+    if (!m) throw e;
+    const minYmdExclusive = m[1];
+    const retryStart = addDaysYmd(minYmdExclusive, 1);
+    const retryRequest = {
+      ...request,
+      dateRanges: [{ startDate: retryStart, endDate: "today" }],
+    };
+    const [retryRes] = await analyticsDataClient.runReport(retryRequest);
+    return retryRes;
+  }
+}
+
 export async function GET(req) {
   try {
     const analyticsDataClient = new BetaAnalyticsDataClient({
@@ -89,12 +117,16 @@ export async function GET(req) {
       resolvedEndYmd = toYmd(today);
     }
 
+    const lifetimeDateRanges = [{ startDate: "2000-01-01", endDate: "today" }];
+    const mau28DateRanges = [{ startDate: "28daysAgo", endDate: "today" }];
+
     // KPI totals for the selected period
     const [kpiTotalsResponse] = await analyticsDataClient.runReport({
       property: `properties/${propertyId}`,
       dateRanges,
       metrics: [
         { name: "totalUsers" },
+        { name: "newUsers" },
         { name: "activeUsers" },
         { name: "sessions" },
         { name: "userEngagementDuration" },
@@ -103,10 +135,11 @@ export async function GET(req) {
 
     const kpiTotalsRow = kpiTotalsResponse.rows?.[0];
     const totalUsers = Number(kpiTotalsRow?.metricValues?.[0]?.value) || 0;
-    const activeUsers = Number(kpiTotalsRow?.metricValues?.[1]?.value) || 0;
-    const sessions = Number(kpiTotalsRow?.metricValues?.[2]?.value) || 0;
+    const newUsers = Number(kpiTotalsRow?.metricValues?.[1]?.value) || 0;
+    const activeUsers = Number(kpiTotalsRow?.metricValues?.[2]?.value) || 0;
+    const sessions = Number(kpiTotalsRow?.metricValues?.[3]?.value) || 0;
     const engagementSeconds =
-      Number(kpiTotalsRow?.metricValues?.[3]?.value) || 0;
+      Number(kpiTotalsRow?.metricValues?.[4]?.value) || 0;
     const avgEngagementSeconds = activeUsers > 0 ? engagementSeconds / activeUsers : 0;
 
     // Total downloads (GA4 best proxy = first_open event count)
@@ -170,6 +203,46 @@ export async function GET(req) {
       getEventCount("ad_impression"),
     ]);
     const adRequests = adRequestEvents + adImpressionEvents;
+
+    // MAU is always last 28 days (independent of selected filter).
+    const [mau28Response] = await analyticsDataClient.runReport({
+      property: `properties/${propertyId}`,
+      dateRanges: mau28DateRanges,
+      metrics: [{ name: "activeUsers" }],
+    });
+    const mau28 = Number(mau28Response.rows?.[0]?.metricValues?.[0]?.value) || 0;
+
+    // Lifetime totals (for card footers / copy).
+    const lifetimeUsersResponse = await runReportWithLifetimeFallback(
+      analyticsDataClient,
+      {
+      property: `properties/${propertyId}`,
+      dateRanges: lifetimeDateRanges,
+      metrics: [{ name: "totalUsers" }],
+      }
+    );
+    const lifetimeTotalUsers =
+      Number(lifetimeUsersResponse.rows?.[0]?.metricValues?.[0]?.value) || 0;
+
+    const lifetimeDownloadsResponse = await runReportWithLifetimeFallback(
+      analyticsDataClient,
+      {
+      property: `properties/${propertyId}`,
+      dateRanges: lifetimeDateRanges,
+      metrics: [{ name: "eventCount" }],
+      dimensionFilter: {
+        filter: {
+          fieldName: "eventName",
+          stringFilter: {
+            matchType: "EXACT",
+            value: "first_open",
+          },
+        },
+      },
+      }
+    );
+    const lifetimeTotalDownloads =
+      Number(lifetimeDownloadsResponse.rows?.[0]?.metricValues?.[0]?.value) || 0;
 
     // Usage & revenue time series
     const [usageResponse] = await analyticsDataClient.runReport({
@@ -249,10 +322,15 @@ export async function GET(req) {
           endDate: resolvedEndYmd,
           label: formatRangeLabel(resolvedStartYmd, resolvedEndYmd),
         },
+        lifetime: {
+          totalUsers: lifetimeTotalUsers,
+          totalDownloads: lifetimeTotalDownloads,
+        },
         kpis: {
           totalUsers,
+          newUsers,
           totalDownloads: downloads,
-          mau: activeUsers,
+          mau: mau28,
           crashPercent: Number(crashPercent.toFixed(2)),
           avgTimeSpentSeconds: avgEngagementSeconds,
           adRequests,

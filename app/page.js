@@ -7,28 +7,49 @@ import TrafficSourcesPieChart from "@/components/charts/TrafficSourcesPieChart";
 import PlaystoreInstallsChart from "@/components/charts/PlaystoreInstallsChart";
 import { fetchUserTypeCounts } from "@/api";
 
-const PERIODS = ["Last 24 Hour", "Last Week", "Last Month", "Last Quarter"];
+const PERIODS = ["Today", "Yesterday", "Last Week", "Last Month"];
 
 export default function Home() {
-  const [activePeriod, setActivePeriod] = useState("Last 24 Hour");
+  const [activePeriod, setActivePeriod] = useState("Today");
   const [kpi, setKpi] = useState(null);
   const [kpiLoading, setKpiLoading] = useState(true);
   const [kpiError, setKpiError] = useState(null);
   const [playerTotalUsers, setPlayerTotalUsers] = useState(null);
   const [copyStatus, setCopyStatus] = useState("idle"); // idle | copied | error
 
-  const periodDays = useMemo(() => {
-    switch (activePeriod) {
-      case "Last 24 Hour":
-        return 1;
-      case "Last Week":
-        return 7;
-      case "Last Quarter":
-        return 90;
-      case "Last Month":
-      default:
-        return 30;
+  const { analyticsQuery, rangeLabelOverride } = useMemo(() => {
+    const toYmdLocal = (d) => {
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    };
+
+    if (activePeriod === "Today") {
+      const now = new Date();
+      const ymd = toYmdLocal(now);
+      return {
+        analyticsQuery: `startDate=${ymd}&endDate=${ymd}`,
+        rangeLabelOverride: "Today",
+      };
     }
+
+    if (activePeriod === "Yesterday") {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      const ymd = toYmdLocal(d);
+      return {
+        analyticsQuery: `startDate=${ymd}&endDate=${ymd}`,
+        rangeLabelOverride: "Yesterday",
+      };
+    }
+
+    if (activePeriod === "Last Week") {
+      return { analyticsQuery: "days=7", rangeLabelOverride: null };
+    }
+
+    // Last Month (default)
+    return { analyticsQuery: "days=30", rangeLabelOverride: null };
   }, [activePeriod]);
 
   useEffect(() => {
@@ -39,7 +60,7 @@ export default function Home() {
         setKpiLoading(true);
         setKpiError(null);
 
-        const res = await fetch(`/api/analytics?days=${periodDays}`);
+        const res = await fetch(`/api/analytics?${analyticsQuery}`);
         const json = await res.json();
         if (!res.ok || !json?.success) {
           throw new Error(json?.error || `Request failed with status ${res.status}`);
@@ -60,7 +81,7 @@ export default function Home() {
     return () => {
       isMounted = false;
     };
-  }, [periodDays]);
+  }, [analyticsQuery]);
 
   useEffect(() => {
     let isMounted = true;
@@ -134,35 +155,25 @@ export default function Home() {
   };
 
   const kpis = kpi?.kpis || null;
-  const rangeLabel = kpi?.range?.label || activePeriod;
+  const rangeLabel = rangeLabelOverride || kpi?.range?.label || activePeriod;
   const cardsLoading = playerTotalUsers === null || kpiLoading;
 
   const totalUsersDisplay =
     playerTotalUsers === null ? "—" : formatCompact(playerTotalUsers);
 
   const buildCopyText = () => {
-    const periodText =
-      activePeriod === "Last 24 Hour"
-        ? "Last 24 Hour"
-        : formatRangeForCopy(kpi?.range?.label || "");
-
-    const downloadsDisplay =
-      !kpis ? "—" : formatCompact(kpis.totalDownloads);
     const mauDisplay = !kpis ? "—" : formatCompact(kpis.mau);
     const crashDisplay = !kpis ? "—" : `${kpis.crashPercent}%`;
     const avgTimeDisplay = !kpis ? "—" : formatMinutes(kpis.avgTimeSpentSeconds);
     const adReqDisplay = !kpis ? "—" : formatCompact(kpis.adRequests);
 
     return [
-      `Thryl Stats (${periodText || activePeriod})`,
-      "",
-      `Total Users: ${totalUsersDisplay}`,
-      `Total Downloads: ${downloadsDisplay}`,
-      `MAU: ${mauDisplay}`,
+      "THRYL Stats",
+      `Total Users : ${totalUsersDisplay}`,
+      `MAU ${mauDisplay}`,
       `Crash %: ${crashDisplay}`,
-      `Avg Time Spent: ${avgTimeDisplay}`,
-      `Ad Requests: ${adReqDisplay}`,
-      "",
+      `Avg Time Spent : ${avgTimeDisplay}`,
+      `Ad Requests : ${adReqDisplay}`,
     ].join("\n");
   };
 
@@ -272,9 +283,23 @@ export default function Home() {
               Total users
             </p>
             <p className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
-              {totalUsersDisplay}
+              {kpiLoading || !kpis ? "—" : formatCompact(kpis.totalUsers)}
             </p>
-            <p className="mt-1 text-sm text-slate-500">All time</p>
+            <p className="mt-1 text-sm text-slate-500">{rangeLabel}</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Lifetime: {totalUsersDisplay}
+            </p>
+          </div>
+
+          <div className="dashboard-card-fade-up relative overflow-hidden rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 transition-transform duration-300 hover:scale-[1.02] hover:shadow-lg">
+            <div className="absolute right-0 top-0 h-24 w-24 translate-x-4 -translate-y-4 rounded-full bg-indigo-500/10" />
+            <p className="text-sm font-medium uppercase tracking-wider text-slate-500">
+              New users
+            </p>
+            <p className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
+              {kpiLoading || !kpis ? "—" : formatCompact(kpis.newUsers)}
+            </p>
+            <p className="mt-1 text-sm text-slate-500">{rangeLabel}</p>
           </div>
 
           <div className="dashboard-card-fade-up relative overflow-hidden rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 transition-transform duration-300 hover:scale-[1.02] hover:shadow-lg">
@@ -286,6 +311,10 @@ export default function Home() {
               {kpiLoading || !kpis ? "—" : formatCompact(kpis.totalDownloads)}
             </p>
             <p className="mt-1 text-sm text-slate-500">{rangeLabel}</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Lifetime:{" "}
+              {totalUsersDisplay}
+            </p>
           </div>
 
           <div className="dashboard-card-fade-up relative overflow-hidden rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 transition-transform duration-300 hover:scale-[1.02] hover:shadow-lg">
@@ -296,7 +325,7 @@ export default function Home() {
             <p className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
               {kpiLoading || !kpis ? "—" : formatCompact(kpis.mau)}
             </p>
-            <p className="mt-1 text-sm text-slate-500">{rangeLabel}</p>
+            <p className="mt-1 text-sm text-slate-500">Last 28 days</p>
           </div>
 
           <div className="dashboard-card-fade-up relative overflow-hidden rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 transition-transform duration-300 hover:scale-[1.02] hover:shadow-lg">
@@ -390,9 +419,9 @@ export default function Home() {
       </section>
 
       {/* Play Store chart from BigQuery */}
-      <section className="mt-8 chart-fade-in">
+      {/* <section className="mt-8 chart-fade-in">
         <PlaystoreInstallsChart />
-      </section>
+      </section> */}
     </main>
   );
 }
