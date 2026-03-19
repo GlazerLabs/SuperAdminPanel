@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { postApi, patchApi } from "@/api";
 import { useLeadFormStore, rowToInitialLead } from "@/zustand/leadForm";
 
@@ -96,6 +96,97 @@ const INITIAL_LEAD = {
   proposalDueDate: "",
 };
 
+function createDefaultWorkspace(rootName) {
+  return {
+    id: "root",
+    name: rootName || "Lead Workspace",
+    folders: [
+      {
+        id: "client-inflows",
+        name: "Client Inflows (Investor Receivables)",
+        folders: [],
+        images: [],
+      },
+      {
+        id: "campaign-outflows",
+        name: "Campaign Outflows (Execution Disbursements)",
+        folders: [],
+        images: [],
+      },
+    ],
+    images: [],
+  };
+}
+
+function findFolderByPath(node, pathIds) {
+  let current = node;
+  for (const id of pathIds) {
+    current = current?.folders?.find((folder) => folder.id === id);
+    if (!current) return null;
+  }
+  return current;
+}
+
+function addFolderAtPath(node, pathIds, folderName) {
+  if (!folderName?.trim()) return node;
+  const newFolder = {
+    id: `folder-${Date.now()}`,
+    name: folderName.trim(),
+    folders: [],
+    images: [],
+  };
+
+  if (pathIds.length === 0) {
+    return {
+      ...node,
+      folders: [...node.folders, newFolder],
+    };
+  }
+
+  const [head, ...tail] = pathIds;
+  return {
+    ...node,
+    folders: node.folders.map((folder) => {
+      if (folder.id !== head) return folder;
+      if (tail.length === 0) {
+        return { ...folder, folders: [...folder.folders, newFolder] };
+      }
+      return addFolderAtPath(folder, tail, folderName);
+    }),
+  };
+}
+
+function addImagesAtPath(node, pathIds, files) {
+  const toImageItem = (file) => ({
+    id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: file.name,
+    url: URL.createObjectURL(file),
+    size: file.size,
+  });
+
+  if (pathIds.length === 0) {
+    return {
+      ...node,
+      images: [...(node.images || []), ...files.map(toImageItem)],
+    };
+  }
+
+  const [head, ...tail] = pathIds;
+  return {
+    ...node,
+    folders: node.folders.map((folder) => {
+      if (folder.id !== head) return folder;
+      if (tail.length === 0) {
+        return {
+          ...folder,
+          images: [...(folder.images || []), ...files.map(toImageItem)],
+        };
+      }
+      return addImagesAtPath(folder, tail, files);
+    }),
+  };
+}
+
 export default function NewLeadPage() {
   const router = useRouter();
   const { selectedLead, closeLeadForm } = useLeadFormStore();
@@ -105,6 +196,10 @@ export default function NewLeadPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [workspaceTree, setWorkspaceTree] = useState(() => createDefaultWorkspace(""));
+  const [activeFolderPath, setActiveFolderPath] = useState([]);
+  const [showWorkspace, setShowWorkspace] = useState(false);
+  const imageInputRef = useRef(null);
 
   useEffect(() => {
     if (selectedLead) {
@@ -113,6 +208,18 @@ export default function NewLeadPage() {
       setLead(INITIAL_LEAD);
     }
   }, [selectedLead]);
+
+  useEffect(() => {
+    const leadName =
+      lead.activityName?.trim() ||
+      selectedLead?.activityName?.trim() ||
+      selectedLead?.activity?.trim() ||
+      "Lead Workspace";
+    setWorkspaceTree((prev) => ({
+      ...prev,
+      name: leadName,
+    }));
+  }, [lead.activityName, selectedLead]);
 
   const handleChange = (field) => (e) => {
     const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
@@ -290,6 +397,31 @@ export default function NewLeadPage() {
     }
   };
 
+  const activeFolder = findFolderByPath(workspaceTree, activeFolderPath) || workspaceTree;
+  const breadcrumbs = [workspaceTree, ...activeFolderPath.reduce((acc, id) => {
+    const parent = acc.length ? acc[acc.length - 1] : workspaceTree;
+    const next = parent.folders.find((folder) => folder.id === id);
+    if (next) acc.push(next);
+    return acc;
+  }, [])];
+
+  const handleCreateFolder = () => {
+    const folderName = window.prompt("Enter folder name");
+    if (!folderName?.trim()) return;
+    setWorkspaceTree((prev) => addFolderAtPath(prev, activeFolderPath, folderName));
+  };
+
+  const handleUploadClick = () => {
+    imageInputRef.current?.click();
+  };
+
+  const handleImageUpload = (e) => {
+    const files = Array.from(e.target.files || []).filter((file) => file.type.startsWith("image/"));
+    if (!files.length) return;
+    setWorkspaceTree((prev) => addImagesAtPath(prev, activeFolderPath, files));
+    e.target.value = "";
+  };
+
   return (
     <main className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -306,7 +438,213 @@ export default function NewLeadPage() {
               : "Capture all key details in a guided, step-wise flow."}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setShowWorkspace(true)}
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+        >
+          <span aria-hidden="true">📁</span>
+          Open lead folders
+        </button>
       </div>
+
+      {showWorkspace && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 p-2 backdrop-blur-[1px] md:p-4"
+          onClick={() => setShowWorkspace(false)}
+        >
+          <section
+            className="mx-auto h-[96vh] w-full max-w-[96vw] overflow-hidden rounded-2xl bg-[#f8fafd] shadow-2xl ring-1 ring-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex h-full flex-col">
+              <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+                <div className="hidden text-sm font-semibold text-slate-600 md:block">Lead Drive</div>
+                <div className="relative flex-1">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <circle cx="11" cy="11" r="7" />
+                    <line x1="16.65" y1="16.65" x2="21" y2="21" />
+                  </svg>
+                  <input
+                    type="text"
+                    value=""
+                    readOnly
+                    placeholder="Search in Drive"
+                    className="h-10 w-full rounded-full border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-500 outline-none"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowWorkspace(false)}
+                  className="inline-flex h-9 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[240px_minmax(0,1fr)]">
+                <aside className="hidden border-r border-slate-200 bg-white px-3 py-4 md:block">
+                  <button
+                    type="button"
+                    onClick={handleCreateFolder}
+                    className="mb-5 inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+                  >
+                    <span className="text-base">+</span>
+                    New
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleUploadClick}
+                    className="mb-5 ml-2 inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+                  >
+                    <span aria-hidden="true">🖼️</span>
+                    Upload
+                  </button>
+                  <nav className="space-y-1 text-sm">
+                    <button type="button" className="block w-full rounded-lg bg-indigo-50 px-3 py-2 text-left font-medium text-indigo-700">
+                      My Drive
+                    </button>
+                    <button type="button" className="block w-full rounded-lg px-3 py-2 text-left text-slate-600 hover:bg-slate-100">
+                      Shared
+                    </button>
+                    <button type="button" className="block w-full rounded-lg px-3 py-2 text-left text-slate-600 hover:bg-slate-100">
+                      Recent
+                    </button>
+                    <button type="button" className="block w-full rounded-lg px-3 py-2 text-left text-slate-600 hover:bg-slate-100">
+                      Starred
+                    </button>
+                  </nav>
+                </aside>
+
+                <div className="min-h-0 overflow-y-auto p-4 md:p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-500">
+                        Deal workspace
+                      </p>
+                      <h2 className="mt-1 text-lg font-semibold text-slate-900">{workspaceTree.name}</h2>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCreateFolder}
+                      className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 md:hidden"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                      New folder
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleUploadClick}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 md:hidden"
+                    >
+                      <span aria-hidden="true">🖼️</span>
+                      Upload image
+                    </button>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-1 text-xs">
+                    {breadcrumbs.map((crumb, index) => (
+                      <button
+                        key={crumb.id}
+                        type="button"
+                        onClick={() => setActiveFolderPath(activeFolderPath.slice(0, Math.max(0, index)))}
+                        className={`rounded-md px-2 py-1 ${
+                          index === breadcrumbs.length - 1
+                            ? "bg-indigo-50 text-indigo-700"
+                            : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                        }`}
+                      >
+                        {crumb.name}
+                      </button>
+                    ))}
+                  </div>
+
+                  {activeFolderPath.length > 0 && (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveFolderPath((prev) => prev.slice(0, -1))}
+                        className="text-xs font-medium text-slate-600 hover:text-slate-900"
+                      >
+                        ← Back to parent
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {activeFolder.folders.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-xs text-slate-500">
+                        No folders yet. Click &quot;New folder&quot; to create one in this location.
+                      </div>
+                    ) : (
+                      activeFolder.folders.map((folder) => (
+                        <button
+                          key={folder.id}
+                          type="button"
+                          onClick={() => setActiveFolderPath((prev) => [...prev, folder.id])}
+                          className="group flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50/30"
+                        >
+                          <span className="mt-0.5 text-xl" aria-hidden="true">📁</span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-semibold text-slate-900 group-hover:text-indigo-700">
+                              {folder.name}
+                            </span>
+                            <span className="mt-1 block text-xs text-slate-500">
+                              {folder.folders.length} subfolders · {(folder.images || []).length} images
+                            </span>
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+
+                  {(activeFolder.images || []).length > 0 && (
+                    <div className="mt-7">
+                      <h3 className="text-sm font-semibold text-slate-900">Images</h3>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {activeFolder.images.map((image) => (
+                          <div
+                            key={image.id}
+                            className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+                          >
+                            <img
+                              src={image.url}
+                              alt={image.name}
+                              className="h-32 w-full object-cover"
+                            />
+                            <div className="px-2 py-2">
+                              <p className="truncate text-xs font-medium text-slate-800">{image.name}</p>
+                              <p className="text-[11px] text-slate-500">
+                                {(image.size / 1024).toFixed(1)} KB
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
 
       <section className="lead-form space-y-5 rounded-2xl bg-white p-6 shadow-lg shadow-slate-200/80 ring-1 ring-indigo-100">
         {/* Stepper */}
