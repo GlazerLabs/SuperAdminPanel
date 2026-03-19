@@ -156,18 +156,23 @@ function addFolderAtPath(node, pathIds, folderName) {
   };
 }
 
-function addImagesAtPath(node, pathIds, files) {
-  const toImageItem = (file) => ({
-    id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    name: file.name,
-    url: URL.createObjectURL(file),
-    size: file.size,
-  });
+function addFilesAtPath(node, pathIds, files) {
+  const toFileItem = (file) => {
+    const isImage = file.type?.startsWith("image/");
+    return {
+      id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: file.name,
+      size: file.size,
+      type: file.type || "unknown",
+      url: isImage ? URL.createObjectURL(file) : "",
+      isImage,
+    };
+  };
 
   if (pathIds.length === 0) {
     return {
       ...node,
-      images: [...(node.images || []), ...files.map(toImageItem)],
+      images: [...(node.images || []), ...files.map(toFileItem)],
     };
   }
 
@@ -179,10 +184,10 @@ function addImagesAtPath(node, pathIds, files) {
       if (tail.length === 0) {
         return {
           ...folder,
-          images: [...(folder.images || []), ...files.map(toImageItem)],
+          images: [...(folder.images || []), ...files.map(toFileItem)],
         };
       }
-      return addImagesAtPath(folder, tail, files);
+      return addFilesAtPath(folder, tail, files);
     }),
   };
 }
@@ -416,9 +421,9 @@ export default function NewLeadPage() {
   };
 
   const handleImageUpload = (e) => {
-    const files = Array.from(e.target.files || []).filter((file) => file.type.startsWith("image/"));
+    const files = Array.from(e.target.files || []);
     if (!files.length) return;
-    setWorkspaceTree((prev) => addImagesAtPath(prev, activeFolderPath, files));
+    setWorkspaceTree((prev) => addFilesAtPath(prev, activeFolderPath, files));
     e.target.value = "";
   };
 
@@ -462,7 +467,6 @@ export default function NewLeadPage() {
                 <input
                   ref={imageInputRef}
                   type="file"
-                  accept="image/*"
                   multiple
                   onChange={handleImageUpload}
                   className="hidden"
@@ -511,7 +515,7 @@ export default function NewLeadPage() {
                     onClick={handleUploadClick}
                     className="mb-5 ml-2 inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
                   >
-                    <span aria-hidden="true">🖼️</span>
+                    <span aria-hidden="true">📤</span>
                     Upload
                   </button>
                   <nav className="space-y-1 text-sm">
@@ -553,8 +557,8 @@ export default function NewLeadPage() {
                       onClick={handleUploadClick}
                       className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 md:hidden"
                     >
-                      <span aria-hidden="true">🖼️</span>
-                      Upload image
+                      <span aria-hidden="true">📤</span>
+                      Upload file
                     </button>
                   </div>
 
@@ -616,22 +620,28 @@ export default function NewLeadPage() {
 
                   {(activeFolder.images || []).length > 0 && (
                     <div className="mt-7">
-                      <h3 className="text-sm font-semibold text-slate-900">Images</h3>
+                      <h3 className="text-sm font-semibold text-slate-900">Files</h3>
                       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {activeFolder.images.map((image) => (
+                        {activeFolder.images.map((file) => (
                           <div
-                            key={image.id}
+                            key={file.id}
                             className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
                           >
-                            <img
-                              src={image.url}
-                              alt={image.name}
-                              className="h-32 w-full object-cover"
-                            />
+                            {file.isImage ? (
+                              <img
+                                src={file.url}
+                                alt={file.name}
+                                className="h-32 w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-32 w-full items-center justify-center bg-slate-100 text-4xl">
+                                📄
+                              </div>
+                            )}
                             <div className="px-2 py-2">
-                              <p className="truncate text-xs font-medium text-slate-800">{image.name}</p>
+                              <p className="truncate text-xs font-medium text-slate-800">{file.name}</p>
                               <p className="text-[11px] text-slate-500">
-                                {(image.size / 1024).toFixed(1)} KB
+                                {(file.size / 1024).toFixed(1)} KB
                               </p>
                             </div>
                           </div>
