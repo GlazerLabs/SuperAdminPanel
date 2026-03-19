@@ -148,10 +148,10 @@ export default function Home() {
   const formatCompact = (n) => {
     const num = Number(n) || 0;
     if (num < 1000) return `${num}`;
-    const thousands = Math.floor(num / 1000);
-    const remainder = num % 1000;
-    const decimal = String(remainder).padStart(3, "0").replace(/0+$/, "");
-    return decimal ? `${thousands}.${decimal} k` : `${thousands} k`;
+    const thousandsValue = num / 1000;
+    const fixed = thousandsValue.toFixed(2);
+    const trimmed = fixed.replace(/\.?0+$/, "");
+    return `${trimmed} k`;
   };
 
   const formatMinutes = (seconds) => {
