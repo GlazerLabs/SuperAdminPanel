@@ -147,10 +147,11 @@ export default function Home() {
 
   const formatCompact = (n) => {
     const num = Number(n) || 0;
-    return new Intl.NumberFormat("en", {
-      notation: "compact",
-      maximumFractionDigits: 1,
-    }).format(num);
+    if (num < 1000) return `${num}`;
+    const thousands = Math.floor(num / 1000);
+    const remainder = num % 1000;
+    const decimal = String(remainder).padStart(3, "0").replace(/0+$/, "");
+    return decimal ? `${thousands}.${decimal} k` : `${thousands} k`;
   };
 
   const formatMinutes = (seconds) => {
@@ -204,8 +205,9 @@ export default function Home() {
   const buildCopyText = () => {
     const periodText = rangeLabelOverride || formatRangeForCopy(kpi?.range?.label || "") || activePeriod;
     const downloadsDisplay = !kpis ? "—" : formatCompact(kpis.totalDownloads);
-    const newUsersCopyDisplay = newUsers === null ? "—" : newUsers;
+    const newUsersCopyDisplay = newUsers === null ? "—" : formatCompact(newUsers);
     const mauDisplay = !kpis ? "—" : formatCompact(kpis.mau);
+    const dauDisplay = !kpis ? "—" : formatCompact(kpi?.dau?.current);
     const crashDisplay = !kpis ? "—" : `${kpis.crashPercent}%`;
     const avgTimeDisplay = !kpis ? "—" : formatMinutes(kpis.avgTimeSpentSeconds);
     const adReqDisplay = !kpis ? "—" : formatCompact(kpis.adRequests);
@@ -217,6 +219,7 @@ export default function Home() {
       `New Users: ${newUsersCopyDisplay}`,
       `Total Downloads: ${downloadsDisplay}`,
       `MAU: ${mauDisplay}`,
+      `DAU: ${dauDisplay}`,
       `Crash %: ${crashDisplay}`,
       `Avg Time Spent: ${avgTimeDisplay}`,
       `Ad Requests: ${adReqDisplay}`,
@@ -308,7 +311,7 @@ export default function Home() {
           </div>
         ) : cardsLoading ? (
           <div className="grid gap-5 sm:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, idx) => (
+            {Array.from({ length: 8 }).map((_, idx) => (
               <div
                 key={idx}
                 className="relative overflow-hidden rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80"
@@ -364,6 +367,17 @@ export default function Home() {
               {kpiLoading || !kpis ? "—" : formatCompact(kpis.mau)}
             </p>
             <p className="mt-1 text-sm text-slate-500">Last 28 days</p>
+          </div>
+
+          <div className="dashboard-card-fade-up relative overflow-hidden rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 transition-transform duration-300 hover:scale-[1.02] hover:shadow-lg">
+            <div className="absolute right-0 top-0 h-24 w-24 translate-x-4 -translate-y-4 rounded-full bg-indigo-500/10" />
+            <p className="text-sm font-medium uppercase tracking-wider text-slate-500">
+              DAU
+            </p>
+            <p className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
+              {kpiLoading || !kpis ? "—" : formatCompact(kpi?.dau?.current)}
+            </p>
+            <p className="mt-1 text-sm text-slate-500">{rangeLabel}</p>
           </div>
 
           <div className="dashboard-card-fade-up relative overflow-hidden rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 transition-transform duration-300 hover:scale-[1.02] hover:shadow-lg">
