@@ -5,7 +5,7 @@ import TrafficChartContainer from "@/components/charts/TrafficChartContainer";
 import CountryInstallsBarChart from "@/components/charts/CountryInstallsBarChart";
 import TrafficSourcesPieChart from "@/components/charts/TrafficSourcesPieChart";
 import PlaystoreInstallsChart from "@/components/charts/PlaystoreInstallsChart";
-import { fetchUserTypeCounts } from "@/api";
+import { fetchDashboardUserCounts } from "@/api";
 
 const PERIODS = ["Today", "Yesterday", "Last Week", "Last Month"];
 
@@ -14,23 +14,37 @@ export default function Home() {
   const [kpi, setKpi] = useState(null);
   const [kpiLoading, setKpiLoading] = useState(true);
   const [kpiError, setKpiError] = useState(null);
-  const [playerTotalUsers, setPlayerTotalUsers] = useState(null);
+  const [totalUsers, setTotalUsers] = useState(null);
+  const [newUsers, setNewUsers] = useState(null);
+  const [userCountsLoading, setUserCountsLoading] = useState(true);
   const [copyStatus, setCopyStatus] = useState("idle"); // idle | copied | error
 
-  const { analyticsQuery, rangeLabelOverride } = useMemo(() => {
+  const { analyticsQuery, rangeLabelOverride, countStartIso, countEndIso } = useMemo(() => {
     const toYmdLocal = (d) => {
       const yyyy = d.getFullYear();
       const mm = String(d.getMonth() + 1).padStart(2, "0");
       const dd = String(d.getDate()).padStart(2, "0");
       return `${yyyy}-${mm}-${dd}`;
     };
+    const startOfDay = (d) => {
+      const x = new Date(d);
+      x.setHours(0, 0, 0, 0);
+      return x;
+    };
+    const endOfDay = (d) => {
+      const x = new Date(d);
+      x.setHours(23, 59, 59, 999);
+      return x;
+    };
+    const today = new Date();
 
     if (activePeriod === "Today") {
-      const now = new Date();
-      const ymd = toYmdLocal(now);
+      const ymd = toYmdLocal(today);
       return {
         analyticsQuery: `startDate=${ymd}&endDate=${ymd}`,
         rangeLabelOverride: "Today",
+        countStartIso: startOfDay(today).toISOString(),
+        countEndIso: endOfDay(today).toISOString(),
       };
     }
 
@@ -41,15 +55,31 @@ export default function Home() {
       return {
         analyticsQuery: `startDate=${ymd}&endDate=${ymd}`,
         rangeLabelOverride: "Yesterday",
+        countStartIso: startOfDay(d).toISOString(),
+        countEndIso: endOfDay(d).toISOString(),
       };
     }
 
     if (activePeriod === "Last Week") {
-      return { analyticsQuery: "days=7", rangeLabelOverride: null };
+      const start = new Date(today);
+      start.setDate(today.getDate() - 6);
+      return {
+        analyticsQuery: "days=7",
+        rangeLabelOverride: null,
+        countStartIso: startOfDay(start).toISOString(),
+        countEndIso: endOfDay(today).toISOString(),
+      };
     }
 
     // Last Month (default)
-    return { analyticsQuery: "days=30", rangeLabelOverride: null };
+    const start = new Date(today);
+    start.setDate(today.getDate() - 29);
+    return {
+      analyticsQuery: "days=30",
+      rangeLabelOverride: null,
+      countStartIso: startOfDay(start).toISOString(),
+      countEndIso: endOfDay(today).toISOString(),
+    };
   }, [activePeriod]);
 
   useEffect(() => {
@@ -86,24 +116,34 @@ export default function Home() {
   useEffect(() => {
     let isMounted = true;
 
-    async function loadPlayerTotalUsers() {
+    async function loadUserCounts() {
       try {
-        const response = await fetchUserTypeCounts("player");
-        const list = Array.isArray(response?.data) ? response.data : [];
-        const item = list[0] || {};
-        const total = Number(item.player ?? item.total) || 0;
-        if (isMounted) setPlayerTotalUsers(total);
+        setUserCountsLoading(true);
+        const response = await fetchDashboardUserCounts(countStartIso, countEndIso);
+        const row = Array.isArray(response?.data) ? response.data[0] || {} : {};
+        const total = Number(row.totalUsers) || 0;
+        const periodUsers = Number(row.users) || 0;
+
+        if (isMounted) {
+          setTotalUsers(total);
+          setNewUsers(periodUsers);
+        }
       } catch (e) {
-        console.error("Failed to load player total users:", e);
-        if (isMounted) setPlayerTotalUsers(0);
+        console.error("Failed to load dashboard user counts:", e);
+        if (isMounted) {
+          setTotalUsers((prev) => (prev === null ? 0 : prev));
+          setNewUsers(0);
+        }
+      } finally {
+        if (isMounted) setUserCountsLoading(false);
       }
     }
 
-    loadPlayerTotalUsers();
+    loadUserCounts();
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [countStartIso, countEndIso]);
 
   const formatCompact = (n) => {
     const num = Number(n) || 0;
@@ -156,24 +196,30 @@ export default function Home() {
 
   const kpis = kpi?.kpis || null;
   const rangeLabel = rangeLabelOverride || kpi?.range?.label || activePeriod;
-  const cardsLoading = playerTotalUsers === null || kpiLoading;
+  const cardsLoading = kpiLoading || userCountsLoading;
 
-  const totalUsersDisplay =
-    playerTotalUsers === null ? "—" : formatCompact(playerTotalUsers);
+  const totalUsersDisplay = totalUsers === null ? "—" : formatCompact(totalUsers);
+  const newUsersDisplay = newUsers === null ? "—" : formatCompact(newUsers);
 
   const buildCopyText = () => {
+    const periodText = rangeLabelOverride || formatRangeForCopy(kpi?.range?.label || "") || activePeriod;
+    const downloadsDisplay = !kpis ? "—" : formatCompact(kpis.totalDownloads);
+    const newUsersCopyDisplay = newUsers === null ? "—" : newUsers;
     const mauDisplay = !kpis ? "—" : formatCompact(kpis.mau);
     const crashDisplay = !kpis ? "—" : `${kpis.crashPercent}%`;
     const avgTimeDisplay = !kpis ? "—" : formatMinutes(kpis.avgTimeSpentSeconds);
     const adReqDisplay = !kpis ? "—" : formatCompact(kpis.adRequests);
 
     return [
-      "THRYL Stats",
-      `Total Users : ${totalUsersDisplay}`,
-      `MAU ${mauDisplay}`,
+      `Thryl Stats (${periodText})`,
+      "",
+      `Total Users: ${totalUsersDisplay}`,
+      `New Users: ${newUsersCopyDisplay}`,
+      `Total Downloads: ${downloadsDisplay}`,
+      `MAU: ${mauDisplay}`,
       `Crash %: ${crashDisplay}`,
-      `Avg Time Spent : ${avgTimeDisplay}`,
-      `Ad Requests : ${adReqDisplay}`,
+      `Avg Time Spent: ${avgTimeDisplay}`,
+      `Ad Requests: ${adReqDisplay}`,
     ].join("\n");
   };
 
@@ -283,11 +329,7 @@ export default function Home() {
               Total users
             </p>
             <p className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
-              {kpiLoading || !kpis ? "—" : formatCompact(kpis.totalUsers)}
-            </p>
-            <p className="mt-1 text-sm text-slate-500">{rangeLabel}</p>
-            <p className="mt-1 text-sm text-slate-500">
-              Lifetime: {totalUsersDisplay}
+              {totalUsersDisplay}
             </p>
           </div>
 
@@ -297,7 +339,7 @@ export default function Home() {
               New users
             </p>
             <p className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
-              {kpiLoading || !kpis ? "—" : formatCompact(kpis.newUsers)}
+              {newUsersDisplay}
             </p>
             <p className="mt-1 text-sm text-slate-500">{rangeLabel}</p>
           </div>
@@ -311,10 +353,6 @@ export default function Home() {
               {kpiLoading || !kpis ? "—" : formatCompact(kpis.totalDownloads)}
             </p>
             <p className="mt-1 text-sm text-slate-500">{rangeLabel}</p>
-            <p className="mt-1 text-sm text-slate-500">
-              Lifetime:{" "}
-              {totalUsersDisplay}
-            </p>
           </div>
 
           <div className="dashboard-card-fade-up relative overflow-hidden rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 transition-transform duration-300 hover:scale-[1.02] hover:shadow-lg">

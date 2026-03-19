@@ -538,7 +538,6 @@ export default function LeadTrackingPage() {
             <p className="mt-1 text-xs text-slate-500">Based on expected revenue fields</p>
           </div>
           <div className="relative overflow-hidden rounded-2xl bg-white p-5 shadow-md shadow-slate-200/70 ring-1 ring-slate-200/90">
-            <div className="pointer-events-none absolute -left-8 -bottom-8 h-24 w-24 rounded-full bg-sky-100" />
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
               Follow-ups next 7 days
             </p>

@@ -126,6 +126,24 @@ export const fetchUserTypeCounts = async (type = "super_admin") => {
 };
 
 /**
+ * Fetch dashboard user counts:
+ * - totalUsers (overall)
+ * - users (within selected date range)
+ */
+export const fetchDashboardUserCounts = async (startDate, endDate) => {
+  try {
+    const response = await getApi("super-admin/get-user-counts", {
+      startDate,
+      endDate,
+    });
+    return response;
+  } catch (error) {
+    console.error("Failed to fetch dashboard user counts:", error);
+    throw error;
+  }
+};
+
+/**
  * Logout helper that also clears auth store and redirects.
  */
 export const logout = () => {

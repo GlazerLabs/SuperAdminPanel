@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Button from "../ui/Button";
+import { postApi } from "@/api";
 import { useAuthStore } from "@/zustand/auth";
 
 function IconMail(props) {
@@ -170,31 +171,11 @@ export default function SuperAdminLogin() {
       setLoading(true);
       setError("");
 
-      const response = await fetch(
-        "https://oap-2.zapto.org/api/v2/auth/login-email-password",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email,
-            password,
-            type: 6,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        const message =
-          errorData?.message ||
-          errorData?.error ||
-          "Unable to sign in. Please check your credentials.";
-        throw new Error(message);
-      }
-
-      const data = await response.json();
+      const data = await postApi("auth/login-email-password", {
+        email,
+        password,
+        type: 6,
+      });
 
       // Try a couple of common token shapes; adjust if your API differs.
       const token = data?.token || data?.data?.token || data?.accessToken;
@@ -209,7 +190,12 @@ export default function SuperAdminLogin() {
       // Go to home/dashboard, layout will show sidebar when logged in
       router.push("/");
     } catch (err) {
-      setError(err.message || "Something went wrong. Please try again.");
+      const message =
+        err?.message ||
+        err?.error ||
+        err?.data?.message ||
+        "Unable to sign in. Please check your credentials.";
+      setError(message);
     } finally {
       setLoading(false);
     }
