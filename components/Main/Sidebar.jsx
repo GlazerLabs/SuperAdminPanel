@@ -11,7 +11,7 @@ const primaryNav = [
   { label: "Role Management", href: "/roles", icon: "shield", matchPrefix: true },
   { label: "Tournaments", href: "/tournaments", icon: "trophy" },
   { label: "Lead Tracking", href: "/leads", icon: "activity", matchPrefix: true },
-  { label: "User Tracking", href: "/tracking", icon: "activity" },
+  { label: "Audit Logs", href: "/tracking", icon: "activity" },
 ];
 
 const secondaryNav = [
