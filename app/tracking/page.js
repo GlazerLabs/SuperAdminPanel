@@ -5,6 +5,7 @@ import { getApi } from "@/api";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
+const ENTRIES_OPTIONS = [10, 20, 50, 100];
 const DEFAULT_MODULE_NAME = "tournament";
 
 const pickTimestamp = (row) =>
@@ -60,6 +61,7 @@ export default function AuditLogsPage() {
   const [error, setError] = useState(null);
   const [refreshSeed, setRefreshSeed] = useState(0);
   const [currentPage, setCurrentPage] = useState(DEFAULT_PAGE);
+  const [entriesPerPage, setEntriesPerPage] = useState(DEFAULT_LIMIT);
   const [totalCount, setTotalCount] = useState(0);
   const [canGoNext, setCanGoNext] = useState(false);
 
@@ -73,8 +75,8 @@ export default function AuditLogsPage() {
 
         const json = await getApi("audit", {
           page: currentPage,
-          limit: DEFAULT_LIMIT,
-          // module_name: DEFAULT_MODULE_NAME,
+          limit: entriesPerPage,
+          module_name: DEFAULT_MODULE_NAME,
         });
 
         const rows = Array.isArray(json?.data)
@@ -96,7 +98,7 @@ export default function AuditLogsPage() {
         if (isMounted) {
           setLogs(rows);
           setTotalCount(metaTotal);
-          setCanGoNext(metaTotal > 0 ? currentPage * DEFAULT_LIMIT < metaTotal : rows.length === DEFAULT_LIMIT);
+          setCanGoNext(metaTotal > 0 ? currentPage * entriesPerPage < metaTotal : rows.length === entriesPerPage);
         }
       } catch (e) {
         // eslint-disable-next-line no-console
@@ -111,22 +113,44 @@ export default function AuditLogsPage() {
     return () => {
       isMounted = false;
     };
-  }, [refreshSeed, currentPage]);
+  }, [refreshSeed, currentPage, entriesPerPage]);
 
   const totalLogs = totalCount || logs.length;
   const latestLogTime = useMemo(() => {
     if (!logs.length) return null;
     return pickTimestamp(logs[0]);
   }, [logs]);
-  const startIndex = logs.length === 0 ? 0 : (currentPage - 1) * DEFAULT_LIMIT + 1;
-  const endIndex = (currentPage - 1) * DEFAULT_LIMIT + logs.length;
+  const startIndex = logs.length === 0 ? 0 : (currentPage - 1) * entriesPerPage + 1;
+  const endIndex = (currentPage - 1) * entriesPerPage + logs.length;
+  const totalPages = totalCount > 0 ? Math.ceil(totalCount / entriesPerPage) : null;
   const visiblePages = useMemo(() => {
-    const inferredTotalPages = totalCount > 0 ? Math.ceil(totalCount / DEFAULT_LIMIT) : currentPage + (canGoNext ? 1 : 0);
-    const maxPages = Math.min(Math.max(inferredTotalPages, 1), 7);
-    const pages = [];
-    for (let p = 1; p <= maxPages; p += 1) pages.push(p);
-    return pages;
-  }, [totalCount, currentPage, canGoNext]);
+    const windowSize = 7;
+
+    if (totalPages) {
+      // Known total: clamp window within [1..totalPages]
+      let start = Math.max(1, currentPage - Math.floor(windowSize / 2));
+      let end = Math.min(totalPages, start + windowSize - 1);
+      start = Math.max(1, end - windowSize + 1);
+
+      return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+    }
+
+    // Unknown total: still shift the page buttons around the current page
+    let start = Math.max(1, currentPage - 3);
+    let end = start + windowSize - 1;
+
+    // If we can't go further, shift window to end on currentPage
+    if (!canGoNext) {
+      end = currentPage;
+      start = Math.max(1, end - windowSize + 1);
+    }
+
+    // Ensure the window includes currentPage (guard against edge math)
+    if (currentPage < start) start = currentPage;
+    if (currentPage > end) end = currentPage;
+
+    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  }, [totalPages, currentPage, canGoNext]);
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -158,6 +182,29 @@ export default function AuditLogsPage() {
       </section>
 
       <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+        {/* Top: entries selector */}
+        <div className="flex flex-wrap items-center gap-4 border-b border-slate-200 bg-slate-50/80 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-600">Show</span>
+            <select
+              value={entriesPerPage}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setEntriesPerPage(next);
+                setCurrentPage(1);
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm"
+            >
+              {ENTRIES_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            <span className="text-sm text-slate-600">entries</span>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1100px] text-left">
             <thead>
@@ -224,7 +271,13 @@ export default function AuditLogsPage() {
 
         <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-200 bg-slate-50/80 px-4 py-3">
           <p className="text-sm text-slate-600">
-            Showing {startIndex} to {endIndex} of {totalLogs} entries
+            {totalCount > 0 ? (
+              <>
+                Showing {startIndex} to {endIndex} of {totalLogs} entries
+              </>
+            ) : (
+              <>Showing {startIndex} to {endIndex}</>
+            )}
           </p>
           <div className="flex items-center gap-1">
             <button
@@ -253,7 +306,7 @@ export default function AuditLogsPage() {
             <button
               type="button"
               onClick={() => setCurrentPage((p) => p + 1)}
-              disabled={!canGoNext || loading}
+              disabled={!canGoNext || loading || (totalPages ? currentPage >= totalPages : false)}
               className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-50"
             >
               Next
