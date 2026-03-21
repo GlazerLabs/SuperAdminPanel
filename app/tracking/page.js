@@ -7,6 +7,7 @@ const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
 const ENTRIES_OPTIONS = [10, 20, 50, 100];
 const DEFAULT_MODULE_NAME = "tournament";
+const ALL_MODULE_VALUE = "__all__";
 
 const pickTimestamp = (row) =>
   row?.created_at || row?.createdAt || row?.updated_at || row?.updatedAt || row?.timestamp || null;
@@ -55,6 +56,34 @@ function getActionBadgeClass(action) {
   return "bg-slate-100 text-slate-700 ring-1 ring-slate-200";
 }
 
+function normalizeModuleNameOptions(json) {
+  const arr = Array.isArray(json)
+    ? json
+    : Array.isArray(json?.data)
+      ? json.data
+      : Array.isArray(json?.result)
+        ? json.result
+        : [];
+
+  const options = arr
+    .map((item) => {
+      if (!item) return null;
+      if (typeof item === "string") {
+        return { value: item, label: item };
+      }
+      if (typeof item === "object") {
+        const value = item.module_name || item.name || item.value || item.key;
+        const label = item.display_name || item.module_name || item.name || value;
+        if (!value) return null;
+        return { value: String(value), label: String(label ?? value) };
+      }
+      return null;
+    })
+    .filter(Boolean);
+
+  return options;
+}
+
 export default function AuditLogsPage() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -62,8 +91,50 @@ export default function AuditLogsPage() {
   const [refreshSeed, setRefreshSeed] = useState(0);
   const [currentPage, setCurrentPage] = useState(DEFAULT_PAGE);
   const [entriesPerPage, setEntriesPerPage] = useState(DEFAULT_LIMIT);
+
+  const [moduleOptions, setModuleOptions] = useState([]);
+  const [selectedModuleName, setSelectedModuleName] = useState(ALL_MODULE_VALUE);
+  const [moduleNamesLoading, setModuleNamesLoading] = useState(true);
+
+  const [searchText, setSearchText] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+
   const [totalCount, setTotalCount] = useState(0);
   const [canGoNext, setCanGoNext] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadModuleNames() {
+      try {
+        setModuleNamesLoading(true);
+        const json = await getApi("audit/module-names");
+        const options = normalizeModuleNameOptions(json);
+
+        if (!isMounted) return;
+        setModuleOptions(options);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("Failed to load audit module names:", e);
+      } finally {
+        if (isMounted) setModuleNamesLoading(false);
+      }
+    }
+
+    loadModuleNames();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setAppliedSearch(searchText.trim());
+      setCurrentPage(DEFAULT_PAGE);
+    }, 500);
+
+    return () => clearTimeout(t);
+  }, [searchText]);
 
   useEffect(() => {
     let isMounted = true;
@@ -73,11 +144,14 @@ export default function AuditLogsPage() {
         setLoading(true);
         setError(null);
 
-        const json = await getApi("audit", {
+        const params = {
           page: currentPage,
           limit: entriesPerPage,
-          module_name: DEFAULT_MODULE_NAME,
-        });
+          ...(selectedModuleName !== ALL_MODULE_VALUE ? { module_name: selectedModuleName } : {}),
+          ...(appliedSearch ? { search: appliedSearch } : {}),
+        };
+
+        const json = await getApi("audit", params);
 
         const rows = Array.isArray(json?.data)
           ? json.data
@@ -113,7 +187,7 @@ export default function AuditLogsPage() {
     return () => {
       isMounted = false;
     };
-  }, [refreshSeed, currentPage, entriesPerPage]);
+  }, [refreshSeed, currentPage, entriesPerPage, selectedModuleName, appliedSearch]);
 
   const totalLogs = totalCount || logs.length;
   const latestLogTime = useMemo(() => {
@@ -158,7 +232,12 @@ export default function AuditLogsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Audit Logs</h1>
           <p className="mt-1 text-slate-600">
-            Showing module: <span className="font-semibold text-slate-800">{DEFAULT_MODULE_NAME}</span>
+            Showing module:{" "}
+            <span className="font-semibold text-slate-800">
+              {selectedModuleName === ALL_MODULE_VALUE
+                ? "All"
+                : moduleOptions.find((o) => o.value === selectedModuleName)?.label || selectedModuleName || DEFAULT_MODULE_NAME}
+            </span>
           </p>
         </div>
         <button
@@ -202,6 +281,35 @@ export default function AuditLogsPage() {
               ))}
             </select>
             <span className="text-sm text-slate-600">entries</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-600">Module</span>
+            <select
+              value={selectedModuleName}
+              onChange={(e) => {
+                setSelectedModuleName(e.target.value);
+                setCurrentPage(1);
+              }}
+              disabled={moduleNamesLoading || moduleOptions.length === 0}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value={ALL_MODULE_VALUE}>All</option>
+              {moduleOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="ml-auto flex min-w-[260px] items-center gap-2">
+            <input
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Search by user name..."
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm"
+            />
           </div>
         </div>
 
