@@ -24,7 +24,7 @@ npm run
 >>>>>>> 997fd85da164614bae5493cf655ca80281b14ee9
 # o
 yarn dev
-# or
+# o
 pnpm de
 # or
 bun dev

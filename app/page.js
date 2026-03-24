@@ -205,7 +205,6 @@ export default function Home() {
   const buildCopyText = () => {
     const periodText = rangeLabelOverride || formatRangeForCopy(kpi?.range?.label || "") || activePeriod;
     const downloadsDisplay = !kpis ? "—" : formatCompact(kpis.totalDownloads);
-    const newUsersCopyDisplay = newUsers === null ? "—" : formatCompact(newUsers);
     const mauDisplay = !kpis ? "—" : formatCompact(kpis.mau);
     const dauDisplay = !kpis ? "—" : formatCompact(kpi?.dau?.current);
     const crashDisplay = !kpis ? "—" : `${kpis.crashPercent}%`;
@@ -216,7 +215,6 @@ export default function Home() {
       `Thryl Stats (${periodText})`,
       "",
       `Total Users: ${totalUsersDisplay}`,
-      `New Users: ${newUsersCopyDisplay}`,
       `Total Downloads: ${downloadsDisplay}`,
       `MAU: ${mauDisplay}`,
       `DAU: ${dauDisplay}`,
@@ -311,7 +309,7 @@ export default function Home() {
           </div>
         ) : cardsLoading ? (
           <div className="grid gap-5 sm:grid-cols-3">
-            {Array.from({ length: 8 }).map((_, idx) => (
+            {Array.from({ length: 9 }).map((_, idx) => (
               <div
                 key={idx}
                 className="relative overflow-hidden rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80"
@@ -409,6 +407,19 @@ export default function Home() {
             </p>
             <p className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
               {kpiLoading || !kpis ? "—" : formatCompact(kpis.adRequests)}
+            </p>
+            <p className="mt-1 text-sm text-slate-500">{rangeLabel}</p>
+          </div>
+
+          <div className="dashboard-card-fade-up relative overflow-hidden rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 transition-transform duration-300 hover:scale-[1.02] hover:shadow-lg">
+            <div className="absolute right-0 top-0 h-24 w-24 translate-x-4 -translate-y-4 rounded-full bg-indigo-500/10" />
+            <p className="text-sm font-medium uppercase tracking-wider text-slate-500">
+              Ad impressions
+            </p>
+            <p className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
+              {kpiLoading || !kpis
+                ? "—"
+                : formatCompact(kpis.adImpressions ?? 0)}
             </p>
             <p className="mt-1 text-sm text-slate-500">{rangeLabel}</p>
           </div>

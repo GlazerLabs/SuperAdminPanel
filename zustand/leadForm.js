@@ -63,14 +63,28 @@ export const useLeadFormStore = create(
   persist(
     (set) => ({
       selectedLead: null,
+      leadFlowState: null,
 
       openLeadForm: (lead) => set({ selectedLead: lead }),
 
       closeLeadForm: () => set({ selectedLead: null }),
+
+      setLeadFlowState: (payload) =>
+        set((state) => ({
+          leadFlowState: {
+            ...(state.leadFlowState || {}),
+            ...payload,
+          },
+        })),
+
+      clearLeadFlowState: () => set({ leadFlowState: null }),
     }),
     {
       name: "lead-form-storage",
-      partialize: (state) => ({ selectedLead: state.selectedLead }),
+      partialize: (state) => ({
+        selectedLead: state.selectedLead,
+        leadFlowState: state.leadFlowState,
+      }),
     }
   )
 );

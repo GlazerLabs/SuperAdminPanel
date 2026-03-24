@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { postApi, patchApi } from "@/api";
 import { useLeadFormStore, rowToInitialLead } from "@/zustand/leadForm";
 
@@ -194,24 +194,41 @@ function addFilesAtPath(node, pathIds, files) {
 
 export default function NewLeadPage() {
   const router = useRouter();
-  const { selectedLead, closeLeadForm } = useLeadFormStore();
+  const {
+    selectedLead,
+    closeLeadForm,
+    leadFlowState,
+    setLeadFlowState,
+    clearLeadFlowState,
+  } = useLeadFormStore();
   const isEditMode = !!selectedLead?.id;
 
   const [lead, setLead] = useState(INITIAL_LEAD);
   const [currentStep, setCurrentStep] = useState(1);
+  const [leadId, setLeadId] = useState(null);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [workspaceTree, setWorkspaceTree] = useState(() => createDefaultWorkspace(""));
   const [activeFolderPath, setActiveFolderPath] = useState([]);
   const [showWorkspace, setShowWorkspace] = useState(false);
   const imageInputRef = useRef(null);
+  const requestLockRef = useRef(false);
 
   useEffect(() => {
     if (selectedLead) {
       setLead(rowToInitialLead(selectedLead));
+      setLeadId(leadFlowState?.leadId || selectedLead.id || null);
+      const savedStep = Number(selectedLead.nextstep ?? selectedLead.nextStepNumber ?? 1);
+      setCurrentStep(Math.min(STEP_DEFINITIONS.length, Math.max(1, savedStep || 1)));
     } else {
       setLead(INITIAL_LEAD);
+      // Fresh create flow should always start without lead id
+      // so first "Next" uses POST, not PATCH.
+      setLeadId(null);
+      setCurrentStep(1);
     }
+  // Keep this tied to selected lead open/close only.
+  // Including leadFlowState here was resetting currentStep after successful step save.
   }, [selectedLead]);
 
   useEffect(() => {
@@ -286,9 +303,148 @@ export default function NewLeadPage() {
     return Object.keys(nextErrors).length === 0;
   };
 
-  const handleNext = () => {
-    if (!validateStep()) return;
-    setCurrentStep((s) => Math.min(STEP_DEFINITIONS.length, s + 1));
+  const parseCreateLeadId = (response) => {
+    // Backend shape: { status, message, data: [ { id: "14", ... } ] }
+    const arrayId = Array.isArray(response?.data) ? response.data?.[0]?.id : null;
+    if (arrayId) return arrayId;
+
+    const direct =
+      response?.data?.id ||
+      response?.data?.data?.id ||
+      response?.data?.[0]?.id ||
+      response?.data?.lead_id ||
+      response?.data?.data?.lead_id ||
+      response?.id ||
+      response?.lead_id ||
+      response?.leadId ||
+      response?.data?.leadId ||
+      response?.data?.data?.leadId;
+    if (direct) return direct;
+
+    // Fallback: search nested response object for common id keys.
+    const stack = [response];
+    while (stack.length) {
+      const current = stack.pop();
+      if (!current || typeof current !== "object") continue;
+      if (current.id) return current.id;
+      if (current.lead_id) return current.lead_id;
+      if (current.leadId) return current.leadId;
+      Object.values(current).forEach((value) => {
+        if (value && typeof value === "object") stack.push(value);
+      });
+    }
+    return null;
+  };
+
+  const buildCreatePayload = () => ({
+    brand: lead.brand || "",
+    account_type: "New",
+    activity: lead.activityName || "",
+    mode: lead.mode || "",
+    activity_type: lead.activityType || "",
+    city_region: lead.cityRegion || "",
+    lead_source: lead.leadSource || "",
+    stage: lead.currentStatus || "New",
+    current_status: lead.currentStatus || "New",
+    next_step: lead.nextStep || "",
+    next_follow_up_date: lead.nextFollowUpDate || "",
+    priority: lead.priority || "",
+    nextstep: 1,
+  });
+
+  const buildStepTwoUpdatePayload = () => ({
+    primary_contact: lead.primaryContactName || "",
+    designation: lead.role || "",
+    phone: lead.phone || "",
+    email: lead.email || "",
+    decision_maker: lead.decisionMakerName || "",
+    nextstep: 2,
+  });
+
+  const buildStepThreeUpdatePayload = () => ({
+    current_status_summary: lead.objective || "",
+    expected_activity_date: lead.activityDate || "",
+    execution_window_from: lead.activityWindowFrom || "",
+    execution_window_to: lead.activityWindowTo || "",
+    dependencies: lead.dependencies || "",
+    nextstep: 3,
+  });
+
+  const buildStepFourUpdatePayload = () => {
+    const expectedRevenue =
+      lead.expectedRevenueType === "value"
+        ? Number(String(lead.expectedRevenueValue).replace(/[^0-9.]/g, "")) || 0
+        : 0;
+    const expectedExpenses = Number(String(lead.expectedExpenses || "0").replace(/[^0-9.]/g, "")) || 0;
+    const grossMargin = expectedRevenue - expectedExpenses;
+    const marginPercent =
+      expectedRevenue > 0 ? Number(((grossMargin / expectedRevenue) * 100).toFixed(1)) : 0;
+    return {
+      expected_revenue: expectedRevenue,
+      expected_expenses: expectedExpenses,
+      gross_margin: grossMargin,
+      margin_percent: marginPercent,
+      payment_terms: lead.paymentTerms || "",
+      gst_applicable: lead.gstApplicable || "Yes",
+      expense_model: lead.expenseModel || "",
+      revenue_model: lead.revenueModel || "",
+      nextstep: 4,
+    };
+  };
+
+  const buildUpdatePayloadByStep = (stepNumber) => {
+    if (stepNumber === 2) return buildStepTwoUpdatePayload();
+    if (stepNumber === 3) return buildStepThreeUpdatePayload();
+    if (stepNumber === 4) return buildStepFourUpdatePayload();
+    return { nextstep: stepNumber };
+  };
+
+  const buildStepOneUpdatePayload = () => ({
+    brand: lead.brand || "",
+    account_type: "New",
+    activity: lead.activityName || "",
+    mode: lead.mode || "",
+    activity_type: lead.activityType || "",
+    city_region: lead.cityRegion || "",
+    lead_source: lead.leadSource || "",
+    stage: lead.currentStatus || "New",
+    current_status: lead.currentStatus || "New",
+    next_step: lead.nextStep || "",
+    next_follow_up_date: lead.nextFollowUpDate || "",
+    priority: lead.priority || "",
+    nextstep: 1,
+  });
+
+  const handleNext = async () => {
+    if (!validateStep() || submitting || requestLockRef.current) return;
+    requestLockRef.current = true;
+    setSubmitting(true);
+    try {
+      if (currentStep === 1 && !leadId) {
+        const response = await postApi("lead-tracking", buildCreatePayload());
+        const createdId = parseCreateLeadId(response);
+        if (createdId) setLeadId(createdId);
+        setLeadFlowState({ leadId: createdId || null, lastResponse: response, nextstep: 1 });
+      } else if (currentStep === 1 && leadId) {
+        const response = await patchApi(`lead-tracking/${leadId}`, buildStepOneUpdatePayload());
+        setLeadFlowState({ leadId, lastResponse: response, nextstep: 1 });
+      } else if (currentStep >= 2) {
+        const idToUpdate = leadId || selectedLead?.id;
+        if (!idToUpdate) throw new Error("Lead id missing for update.");
+        const response = await patchApi(
+          `lead-tracking/${idToUpdate}`,
+          buildUpdatePayloadByStep(currentStep)
+        );
+        setLeadFlowState({ leadId: idToUpdate, lastResponse: response, nextstep: currentStep });
+      }
+      setCurrentStep((s) => Math.min(STEP_DEFINITIONS.length, s + 1));
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to save step", error);
+    } finally {
+      requestLockRef.current = false;
+      setSubmitting(false);
+    }
   };
 
   const handleBack = () => {
@@ -301,114 +457,62 @@ export default function NewLeadPage() {
   };
 
   const handleSubmit = async () => {
-    if (!validateStep() || submitting) return;
+    if (!validateStep() || submitting || requestLockRef.current) return;
+    requestLockRef.current = true;
 
     setSubmitting(true);
     try {
-      if (isEditMode && selectedLead?.id) {
-        const valueBefore = Number(String(selectedLead.expectedRevenueValue || "0").replace(/[^0-9.]/g, "")) || 0;
-        const valueAfter =
-          lead.expectedRevenueType === "value"
-            ? Number(String(lead.expectedRevenueValue).replace(/[^0-9.]/g, "")) || 0
-            : 0;
-        const expenseBefore = Number(String(selectedLead.expectedExpenses || "0").replace(/[^0-9.]/g, "")) || 0;
-        const expenseAfter = Number(String(lead.expectedExpenses || "0").replace(/[^0-9.]/g, "")) || 0;
-        const payload = {
-          brand: lead.brand,
-          update_date: new Date().toISOString().split("T")[0],
-          channel: lead.primaryChannel || "",
-          update_type: "Follow-up",
-          discussion_summary: lead.objective || "",
-          client_sentiment: "Neutral",
-          outcome: "Progressed",
-          stage_before: lead.currentStatus || "",
-          stage_after: lead.currentStatus || "",
-          value_before: valueBefore,
-          value_after: valueAfter,
-          expense_before: expenseBefore,
-          expense_after: expenseAfter,
-          next_action: lead.nextStep || "",
-          next_follow_up_date: lead.nextFollowUpDate || "",
-          expected_activity_date: lead.activityDate || "",
-          expected_closure_date: lead.nextFollowUpDate || "",
-          risks_blockers: "",
-          dependencies: lead.dependencies || "",
-          links_attachments: "",
-          internal_notes: "",
-        };
-        await patchApi(`lead-tracking/${selectedLead.id}`, payload);
-        closeLeadForm();
-        router.push("/leads");
+      if (currentStep === 1 && !leadId) {
+        const response = await postApi("lead-tracking", buildCreatePayload());
+        const createdId = parseCreateLeadId(response);
+        if (createdId) {
+          setLeadId(createdId);
+        }
+        setLeadFlowState({ leadId: createdId || null, lastResponse: response, nextstep: 1 });
+        if (!createdId) {
+          // eslint-disable-next-line no-console
+          console.warn("Lead created but id not found in response; step progression still allowed.");
+        }
       } else {
-        const expectedRevenue =
-          lead.expectedRevenueType === "value"
-            ? Number(String(lead.expectedRevenueValue).replace(/[^0-9.]/g, "")) || 0
-            : 0;
-        const expectedExpenses =
-          lead.expectedExpenses
-            ? Number(String(lead.expectedExpenses).replace(/[^0-9.]/g, "")) || 0
-            : 0;
-        const grossMargin = expectedRevenue - expectedExpenses;
-        const marginPercent =
-          expectedRevenue > 0 ? Number(((grossMargin / expectedRevenue) * 100).toFixed(1)) : 0;
-
-        const payload = {
-          brand: lead.brand,
-          account_type: "New",
-          activity: lead.activityName,
-          mode: lead.mode || "",
-          activity_type: lead.activityType || "",
-          industry: "",
-          city_region: lead.cityRegion || "",
-          lead_source: lead.leadSource || "",
-          primary_contact: lead.primaryContactName || "",
-          designation: lead.role || "",
-          phone: lead.phone || "",
-          email: lead.email || "",
-          decision_maker: lead.decisionMakerName || "",
-          stage: lead.currentStatus || "New",
-          expected_revenue: expectedRevenue,
-          expected_expenses: expectedExpenses,
-          gross_margin: grossMargin,
-          margin_percent: marginPercent,
-          payment_terms: lead.paymentTerms || "",
-          gst_applicable: lead.gstApplicable || "Yes",
-          proposal_link: "",
-          sow_contract_status: "",
-          po_status: "",
-          current_status: lead.currentStatus || "New",
-          current_status_summary: lead.objective || "",
-          next_step: lead.nextStep || "",
-          priority: lead.priority || "",
-          risk_blockers: lead.risks || "",
-          dependencies: lead.dependencies || "",
-          attachments_links: "",
-        };
-        if (lead.nextFollowUpDate) {
-          payload.expected_closure_date = lead.nextFollowUpDate;
-          payload.next_follow_up_date = lead.nextFollowUpDate;
-        }
-        if (lead.activityDate) {
-          payload.expected_activity_date = lead.activityDate;
-        }
-        await postApi("lead-tracking", payload);
-        router.push("/leads");
+        const idToUpdate = leadId || selectedLead?.id;
+        if (!idToUpdate) throw new Error("Lead id missing for final update.");
+        const response = await patchApi(
+          `lead-tracking/${idToUpdate}`,
+          buildUpdatePayloadByStep(currentStep)
+        );
+        setLeadFlowState({ leadId: idToUpdate, lastResponse: response, nextstep: currentStep });
       }
+      if (isEditMode) {
+        closeLeadForm();
+      } else {
+        clearLeadFlowState();
+      }
+      router.push("/leads");
     } catch (error) {
       // eslint-disable-next-line no-console
-      console.error(isEditMode ? "Failed to update lead" : "Failed to create lead", error);
+      console.error("Failed to save lead", error);
     } finally {
+      requestLockRef.current = false;
       setSubmitting(false);
     }
   };
 
-  const activeFolder = findFolderByPath(workspaceTree, activeFolderPath) || workspaceTree;
-  const breadcrumbs = [workspaceTree, ...activeFolderPath.reduce((acc, id) => {
-    const parent = acc.length ? acc[acc.length - 1] : workspaceTree;
-    const next = parent.folders.find((folder) => folder.id === id);
-    if (next) acc.push(next);
-    return acc;
-  }, [])];
+  const activeFolder = useMemo(
+    () => findFolderByPath(workspaceTree, activeFolderPath) || workspaceTree,
+    [workspaceTree, activeFolderPath]
+  );
+
+  const breadcrumbs = useMemo(() => {
+    return [
+      workspaceTree,
+      ...activeFolderPath.reduce((acc, id) => {
+        const parent = acc.length ? acc[acc.length - 1] : workspaceTree;
+        const next = parent.folders.find((folder) => folder.id === id);
+        if (next) acc.push(next);
+        return acc;
+      }, []),
+    ];
+  }, [workspaceTree, activeFolderPath]);
 
   const handleCreateFolder = () => {
     const folderName = window.prompt("Enter folder name");
@@ -1215,9 +1319,10 @@ export default function NewLeadPage() {
               <button
                 type="button"
                 onClick={handleNext}
-                className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
+                disabled={submitting}
+                className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                Next step
+                {submitting ? "Saving…" : "Next step"}
               </button>
             )}
             {currentStep === STEP_DEFINITIONS.length && (
