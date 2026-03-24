@@ -3,6 +3,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 ## Getting Started..
 =======
 ## Getting Started.
@@ -13,6 +14,10 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 =======
 ## Getting Started..
 >>>>>>> dced6daeb3be3c36a6a14601e1830e8ea30c0642
+=======
+## Getting Started.
+
+>>>>>>> 264afe3eb3d2ef1a78963607476f303e8491fa41
 First, run the development server:
 
 <<<<<<< HEAD
