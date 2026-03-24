@@ -7,7 +7,7 @@ import TrafficSourcesPieChart from "@/components/charts/TrafficSourcesPieChart";
 import PlaystoreInstallsChart from "@/components/charts/PlaystoreInstallsChart";
 import { fetchDashboardUserCounts } from "@/api";
 
-const PERIODS = ["Today", "Yesterday", "Last Week", "Last Month"];
+const PERIODS = ["Today", "Yesterday", "Last Week", "Last Month", "Quarterly"];
 
 export default function Home() {
   const [activePeriod, setActivePeriod] = useState("Today");
@@ -65,6 +65,17 @@ export default function Home() {
       start.setDate(today.getDate() - 6);
       return {
         analyticsQuery: "days=7",
+        rangeLabelOverride: null,
+        countStartIso: startOfDay(start).toISOString(),
+        countEndIso: endOfDay(today).toISOString(),
+      };
+    }
+
+    if (activePeriod === "Quarterly") {
+      const start = new Date(today);
+      start.setDate(today.getDate() - 89);
+      return {
+        analyticsQuery: "days=90",
         rangeLabelOverride: null,
         countStartIso: startOfDay(start).toISOString(),
         countEndIso: endOfDay(today).toISOString(),
