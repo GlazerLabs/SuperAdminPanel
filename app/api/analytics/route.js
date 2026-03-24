@@ -1,6 +1,136 @@
 import { NextResponse } from "next/server";
 import { BetaAnalyticsDataClient } from "@google-analytics/data";
 
+function toAdMobDate(ymd) {
+  const [year, month, day] = String(ymd || "")
+    .split("-")
+    .map((v) => Number(v));
+  if (!year || !month || !day) return null;
+  return { year, month, day };
+}
+
+function normalizeAdMobAccountId(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  return value.startsWith("accounts/") ? value.replace(/^accounts\//, "") : value;
+}
+
+function parseAdMobRowsFromText(rawText) {
+  const text = String(rawText || "").trim();
+  if (!text) return [];
+
+  // AdMob can return either newline-delimited JSON objects or a JSON array/object.
+  if (text.startsWith("[")) {
+    const arr = JSON.parse(text);
+    return Array.isArray(arr) ? arr : [];
+  }
+  if (text.startsWith("{")) {
+    return [JSON.parse(text)];
+  }
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
+async function getAdMobTotals({ startYmd, endYmd }) {
+  const clientId = String(process.env.ADMOB_CLIENT_ID || "").trim();
+  const clientSecret = String(process.env.ADMOB_CLIENT_SECRET || "").trim();
+  const refreshToken = String(process.env.ADMOB_REFRESH_TOKEN || "").trim();
+  const publisherId = normalizeAdMobAccountId(process.env.ADMOB_PUBLISHER_ID);
+  const appId = String(process.env.ADMOB_APP_ID || "").trim();
+
+  if (!clientId || !clientSecret || !refreshToken || !publisherId) {
+    throw new Error(
+      "Missing AdMob credentials. Set ADMOB_CLIENT_ID, ADMOB_CLIENT_SECRET, ADMOB_REFRESH_TOKEN, ADMOB_PUBLISHER_ID"
+    );
+  }
+
+  const startDate = toAdMobDate(startYmd);
+  const endDate = toAdMobDate(endYmd);
+  if (!startDate || !endDate) return null;
+
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  const tokenText = await tokenRes.text();
+  if (!tokenRes.ok) {
+    throw new Error(
+      `AdMob token request failed with status ${tokenRes.status}: ${tokenText.slice(0, 300)}`
+    );
+  }
+  const tokenJson = JSON.parse(tokenText);
+  const accessToken = tokenJson?.access_token;
+  if (!accessToken) {
+    throw new Error("AdMob token response did not include access_token");
+  }
+
+  const reportSpec = {
+    date_range: { start_date: startDate, end_date: endDate },
+    metrics: ["AD_REQUESTS", "IMPRESSIONS"],
+    dimensions: ["DATE"],
+    sort_conditions: [{ dimension: "DATE", order: "ASCENDING" }],
+    localization_settings: {
+      currency_code: "USD",
+      language_code: "en-US",
+    },
+  };
+
+  if (appId) {
+    reportSpec.dimension_filters = {
+      filters: [
+        {
+          dimension: "APP",
+          matchesAny: {
+            values: [appId],
+          },
+        },
+      ],
+    };
+  }
+
+  const reportRes = await fetch(
+    `https://admob.googleapis.com/v1/accounts/${publisherId}/networkReport:generate`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ report_spec: reportSpec }),
+    }
+  );
+
+  const reportText = await reportRes.text();
+  if (!reportRes.ok) {
+    throw new Error(
+      `AdMob report request failed with status ${reportRes.status}: ${reportText.slice(0, 300)}`
+    );
+  }
+
+  const chunks = parseAdMobRowsFromText(reportText);
+  let adRequests = 0;
+  let adImpressions = 0;
+
+  for (const item of chunks) {
+    const row = item?.row;
+    if (!row) continue;
+    adRequests += Number(row.metricValues?.AD_REQUESTS?.integerValue || 0);
+    adImpressions += Number(row.metricValues?.IMPRESSIONS?.integerValue || 0);
+  }
+
+  return { adRequests, adImpressions };
+}
+
 function formatGaDate(gaDate) {
   if (!gaDate || gaDate.length !== 8) return gaDate;
 
@@ -177,32 +307,13 @@ export async function GET(req) {
     const crashEvents = Number(crashResponse.rows?.[0]?.metricValues?.[0]?.value) || 0;
     const crashPercent = sessions > 0 ? (crashEvents / sessions) * 100 : 0;
 
-    // Ad requests (common events: ad_request / ad_impression).
-    // We query them separately to avoid filter-shape incompatibilities.
-    const getEventCount = async (eventName) => {
-      try {
-        const [res] = await analyticsDataClient.runReport({
-          property: `properties/${propertyId}`,
-          dateRanges,
-          metrics: [{ name: "eventCount" }],
-          dimensionFilter: {
-            filter: {
-              fieldName: "eventName",
-              stringFilter: { matchType: "EXACT", value: eventName },
-            },
-          },
-        });
-        return Number(res.rows?.[0]?.metricValues?.[0]?.value) || 0;
-      } catch (e) {
-        return 0;
-      }
-    };
-
-    const [adRequestEvents, adImpressionEvents] = await Promise.all([
-      getEventCount("ad_request"),
-      getEventCount("ad_impression"),
-    ]);
-    const adRequests = adRequestEvents + adImpressionEvents;
+    // Ad requests/impressions from AdMob API (no GA4 fallback).
+    const adMobTotals = await getAdMobTotals({
+      startYmd: resolvedStartYmd,
+      endYmd: resolvedEndYmd,
+    });
+    const adRequests = adMobTotals.adRequests;
+    const adImpressions = adMobTotals.adImpressions;
 
     // MAU is always last 28 days (independent of selected filter).
     const [mau28Response] = await analyticsDataClient.runReport({
@@ -334,6 +445,7 @@ export async function GET(req) {
           crashPercent: Number(crashPercent.toFixed(2)),
           avgTimeSpentSeconds: avgEngagementSeconds,
           adRequests,
+          adImpressions,
         },
         dau: {
           current: currentDau,
@@ -359,7 +471,8 @@ export async function GET(req) {
       {
         success: false,
         error: error.message,
-        details: "Check if GA4_PROPERTY_ID is correct and API is enabled",
+        details:
+          "Check GA4 settings and AdMob env vars (ADMOB_CLIENT_ID, ADMOB_CLIENT_SECRET, ADMOB_REFRESH_TOKEN, ADMOB_PUBLISHER_ID)",
       },
       { status: 500 }
     );

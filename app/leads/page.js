@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { getApi } from "@/api";
@@ -199,6 +199,25 @@ function parseRevenue(lead) {
   return 0;
 }
 
+const STATUS_PILL_CLASS = {
+  New: "bg-sky-50 text-sky-700",
+  Contacted: "bg-violet-50 text-violet-700",
+  Qualification: "bg-amber-50 text-amber-700",
+  "Proposal Shared": "bg-indigo-50 text-indigo-700",
+  Negotiation: "bg-emerald-50 text-emerald-700",
+  Won: "bg-green-50 text-green-700",
+  Lost: "bg-rose-50 text-rose-700",
+};
+
+function getStatusPillClasses(status) {
+  return STATUS_PILL_CLASS[status] || "bg-slate-100 text-slate-700";
+}
+
+function formatRevenueL(value) {
+  if (!value) return "—";
+  return `₹${(value / 100000).toFixed(1)}L`;
+}
+
 export default function LeadTrackingPage() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -250,11 +269,25 @@ export default function LeadTrackingPage() {
             activityName: item.activity,
             leadOwner: item.full_name || item.username || "Unknown",
             currentStatus: item.current_status || item.stage || "New",
+            nextstep: Number(item.nextstep ?? item.next_step ?? 1) || 1,
             nextFollowUpDate:
               (latestUpdate?.next_follow_up_date || item.next_follow_up_date || "")
                 ?.slice(0, 10) || "",
             primaryChannel: latestUpdate?.channel || item.lead_source || "",
+            nextStep: latestUpdate?.next_action || item.next_step || "",
             cityRegion: item.city_region || "",
+            leadSource: item.lead_source || "",
+            mode: item.mode || "",
+            activityType: item.activity_type || "",
+            priority: item.priority || "",
+            primaryContactName: item.primary_contact || "",
+            phone: item.phone || "",
+            email: item.email || "",
+            role: item.designation || "",
+            decisionMakerName: item.decision_maker || "",
+            objective: item.current_status_summary || latestUpdate?.discussion_summary || "",
+            activityDate: item.expected_activity_date?.slice?.(0, 10) || "",
+            dependencies: latestUpdate?.dependencies || item.dependencies || "",
             expectedRevenueType: "value",
             expectedRevenueValue: item.expected_revenue || "",
             expectedRevenueRange: "",
@@ -439,40 +472,63 @@ export default function LeadTrackingPage() {
     setCurrentStep(1);
   };
 
+  const revenueByLeadId = useMemo(() => {
+    const map = new Map();
+    for (const l of leads) {
+      map.set(l.id, parseRevenue(l));
+    }
+    return map;
+  }, [leads]);
+
   const totalLeads = leads.length;
-  const totalPipeline = leads.reduce((sum, l) => sum + parseRevenue(l), 0);
-  const activeLeads = leads.filter((l) => l.currentStatus !== "Won" && l.currentStatus !== "Lost");
-  const next7Days = leads.filter((l) => {
-    if (!l.nextFollowUpDate) return false;
+
+  const totalPipeline = useMemo(() => {
+    let sum = 0;
+    for (const v of revenueByLeadId.values()) sum += v;
+    return sum;
+  }, [revenueByLeadId]);
+
+  const activeLeads = useMemo(
+    () => leads.filter((l) => l.currentStatus !== "Won" && l.currentStatus !== "Lost"),
+    [leads]
+  );
+
+  const next7Days = useMemo(() => {
+    if (!leads.length) return [];
     const today = new Date();
-    const target = new Date(l.nextFollowUpDate);
-    const diff = (target - today) / (1000 * 60 * 60 * 24);
-    return diff >= 0 && diff <= 7;
-  });
+    return leads.filter((l) => {
+      if (!l.nextFollowUpDate) return false;
+      const target = new Date(l.nextFollowUpDate);
+      const diffDays = (target - today) / (1000 * 60 * 60 * 24);
+      return diffDays >= 0 && diffDays <= 7;
+    });
+  }, [leads]);
 
-  const statusCounts = STATUS_OPTIONS.reduce(
-    (acc, status) => ({
-      ...acc,
-      [status]: leads.filter((l) => l.currentStatus === status).length,
-    }),
-    {}
-  );
+  const statusCounts = useMemo(() => {
+    const acc = Object.fromEntries(STATUS_OPTIONS.map((s) => [s, 0]));
+    for (const l of leads) {
+      const s = l.currentStatus;
+      if (s && Object.prototype.hasOwnProperty.call(acc, s)) acc[s] += 1;
+    }
+    return acc;
+  }, [leads]);
 
-  const byOwnerChartData = Object.values(
-    leads.reduce((acc, l) => {
+  const byOwnerChartData = useMemo(() => {
+    const owners = new Map();
+    for (const l of leads) {
       const key = l.leadOwner || "Unknown";
-      const current = acc[key] || { owner: key, leads: 0, value: 0 };
+      const current = owners.get(key) || { owner: key, leads: 0, value: 0 };
       current.leads += 1;
-      current.value += parseRevenue(l);
-      acc[key] = current;
-      return acc;
-    }, {})
-  );
+      current.value += revenueByLeadId.get(l.id) || 0;
+      owners.set(key, current);
+    }
+    return Array.from(owners.values());
+  }, [leads, revenueByLeadId]);
 
-  const statusChartData = STATUS_OPTIONS.map((status) => ({
-    status,
-    count: statusCounts[status] || 0,
-  }));
+  const statusChartData = useMemo(
+    () => STATUS_OPTIONS.map((status) => ({ status, count: statusCounts[status] || 0 })),
+    [statusCounts]
+  );
 
   return (
     <main className="space-y-6">
@@ -731,69 +787,53 @@ export default function LeadTrackingPage() {
                   </td>
                 </tr>
               ) : (
-                leads.map((row) => (
-                  <tr
-                    key={row.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => {
-                      useLeadFormStore.getState().openLeadForm(row);
-                      router.push("/leads/new");
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
+                leads.map((row) => {
+                  const approxRevenue = revenueByLeadId.get(row.id) || 0;
+                  const status = row.currentStatus || "New";
+                  const colorClasses = getStatusPillClasses(status);
+                  return (
+                    <tr
+                      key={row.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
                         useLeadFormStore.getState().openLeadForm(row);
                         router.push("/leads/new");
-                      }
-                    }}
-                    className="hover:bg-slate-50/60 text-[13px] cursor-pointer"
-                  >
-                    <td className="px-4 py-2.5 text-slate-900">{row.brand}</td>
-                    <td className="px-4 py-2.5 text-slate-700">{row.activityName}</td>
-                    <td className="px-4 py-2.5 text-slate-700">{row.leadOwner}</td>
-                    <td className="px-4 py-3">
-                      {(() => {
-                        const status = row.currentStatus || "New";
-                        const colorClasses =
-                          status === "New"
-                            ? "bg-sky-50 text-sky-700"
-                            : status === "Contacted"
-                              ? "bg-violet-50 text-violet-700"
-                              : status === "Qualification"
-                                ? "bg-amber-50 text-amber-700"
-                                : status === "Proposal Shared"
-                                  ? "bg-indigo-50 text-indigo-700"
-                                  : status === "Negotiation"
-                                    ? "bg-emerald-50 text-emerald-700"
-                                    : status === "Won"
-                                      ? "bg-green-50 text-green-700"
-                                      : status === "Lost"
-                                        ? "bg-rose-50 text-rose-700"
-                                        : "bg-slate-100 text-slate-700";
-                        return (
-                          <span
-                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${colorClasses}`}
-                          >
-                            {status}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-4 py-2.5 text-slate-700">
-                      {row.nextFollowUpDate || "—"}
-                    </td>
-                    <td className="px-4 py-2.5 text-slate-700">
-                      {row.primaryChannel || "—"}
-                    </td>
-                    <td className="px-4 py-2.5 text-slate-700">
-                      {row.cityRegion || "—"}
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-slate-800">
-                      {parseRevenue(row) ? `₹${(parseRevenue(row) / 100000).toFixed(1)}L` : "—"}
-                    </td>
-                  </tr>
-                ))
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          useLeadFormStore.getState().openLeadForm(row);
+                          router.push("/leads/new");
+                        }
+                      }}
+                      className="hover:bg-slate-50/60 text-[13px] cursor-pointer"
+                    >
+                      <td className="px-4 py-2.5 text-slate-900">{row.brand}</td>
+                      <td className="px-4 py-2.5 text-slate-700">{row.activityName}</td>
+                      <td className="px-4 py-2.5 text-slate-700">{row.leadOwner}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${colorClasses}`}
+                        >
+                          {status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-700">
+                        {row.nextFollowUpDate || "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-700">
+                        {row.primaryChannel || "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-700">
+                        {row.cityRegion || "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-slate-800">
+                        {formatRevenueL(approxRevenue)}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1619,22 +1659,6 @@ export default function LeadTrackingPage() {
                       placeholder="Internal approvals, tech dependencies, brand assets, etc."
                     />
                   </div>
-                </div>
-              </section>
-            )}
-
-            {/* Step 4 */}
-            {currentStep === 4 && (
-              <section>
-                <div className="mb-3">
-                  <h3 className="text-sm font-semibold text-slate-900">Step 4 · Commercials</h3>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Rough commercials so everyone knows deal size.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  {/* existing Step 4 content remains unchanged */}
                 </div>
               </section>
             )}
