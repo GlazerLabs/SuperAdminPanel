@@ -16,7 +16,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 >>>>>>> 7d9c7d374dd6a02cff9db7136dbb2a9079caa6fb
 =======
 ## Getting Started..
->>>>>>> dced6daeb3be3c36a6a14601e1830e8ea30c0642
+>>>>>>> dced6daeb3be3c36a6a14601e18308ea30c0642
 =======
 ## Getting Started.
 >>>>>>> 9ddcda77802ee465de4c68375052eed119b05080
