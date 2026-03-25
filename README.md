@@ -1,11 +1,36 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app)
 
+<<<<<<< HEAD
 ## Getting Started..
+=======
+<<<<<<< HEAD
+<<<<<<< HEAD
+<<<<<<< HEAD
+<<<<<<< HEAD
+## Getting Started.
+=======
+## Getting Started.
+>>>>>>> 6fd4026f3ce0ac14781cb121842375287e1cf370
+=======
+## Getting Started.
+>>>>>>> 7d9c7d374dd6a02cff9db7136dbb2a9079caa6fb
+=======
+## Getting Started..
+>>>>>>> dced6daeb3be3c36a6a14601e1830e8ea30c0642
+=======
+## Getting Started.
+>>>>>>> 9ddcda77802ee465de4c68375052eed119b05080
 
+>>>>>>> 264afe3eb3d2ef1a78963607476f303e8491fa41
 First, run the development server:
 
+<<<<<<< HEAD
+```bash
+npm run
+=======
 ```bas
 npm run 
+>>>>>>> 997fd85da164614bae5493cf655ca80281b14ee9
 # o
 yarn dev
 # o

@@ -1,7 +1,10 @@
 "use client";
 
 import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useAuthStore } from "@/zustand/auth";
+import { readProfile } from "@/api";
 
 const titleMap = {
   "/": "Dashboard",
@@ -19,6 +22,72 @@ const titleMap = {
 
 export default function AppHeader() {
   const pathname = usePathname();
+  const { token, user, loggedIn, setAuth } = useAuthStore();
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProfileIfNeeded() {
+      if (!loggedIn || !token) return;
+
+      // If we already have *any* stored user object (from login or persisted state),
+      // don't spam the profile endpoint.
+      if (user) return;
+
+      setProfileLoading(true);
+      try {
+        const profileRes = await readProfile();
+        const profile =
+          profileRes?.profile ||
+          profileRes?.data?.profile ||
+          profileRes?.data?.user ||
+          profileRes?.user ||
+          profileRes?.data ||
+          profileRes ||
+          null;
+
+        if (!cancelled && profile) {
+          setAuth({ token, user: profile });
+        }
+      } catch (e) {
+        // Non-fatal: header can still show a fallback.
+        // eslint-disable-next-line no-console
+        console.error("Failed to load profile in header:", e);
+      } finally {
+        if (!cancelled) setProfileLoading(false);
+      }
+    }
+
+    loadProfileIfNeeded();
+    return () => {
+      cancelled = true;
+    };
+  }, [loggedIn, token, user, setAuth]);
+
+  const displayName = useMemo(() => {
+    return (
+      user?.name ||
+      user?.full_name ||
+      user?.username ||
+      user?.email ||
+      "Admin"
+    );
+  }, [user]);
+
+  const roleLabel = useMemo(() => {
+    return user?.role || user?.type || user?.userType || "Admin";
+  }, [user]);
+
+  const avatarUrl =
+    typeof user?.avatar === "string"
+      ? user.avatar
+      : typeof user?.image === "string"
+        ? user.image
+        : typeof user?.avatar_url === "string"
+          ? user.avatar_url
+          : null;
+
   const title =
     titleMap[pathname] ??
     (pathname?.startsWith("/members")
@@ -45,18 +114,29 @@ export default function AppHeader() {
 
         <div className="flex items-center gap-2.5 rounded-full bg-slate-50 pl-1.5 pr-3 py-1.5 ring-1 ring-slate-200/80">
           <div className="relative h-8 w-8 overflow-hidden rounded-full bg-slate-200">
-            <Image
-              src="/avatar-placeholder.png"
-              alt="Admin avatar"
-              fill
-              sizes="32px"
-            />
+            {avatarUrl ? (
+              // Use <img> so we don't depend on Next/Image remote domains.
+              <img
+                src={avatarUrl}
+                alt="Admin avatar"
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <Image
+                src="/avatar-placeholder.png"
+                alt="Admin avatar"
+                fill
+                sizes="32px"
+              />
+            )}
           </div>
           <div className="hidden text-left md:block">
-            <div className="text-sm font-medium text-slate-800">Rahul Sharma</div>
+            <div className="text-sm font-medium text-slate-800">
+              {profileLoading ? "Loading..." : displayName}
+            </div>
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              Admin
+              {roleLabel}
             </div>
           </div>
         </div>

@@ -144,6 +144,22 @@ export const fetchDashboardUserCounts = async (startDate, endDate) => {
 };
 
 /**
+ * Read current logged-in admin profile.
+ * Tries `GET profile/read-profile` first, then falls back to `POST` with token in body.
+ */
+export const readProfile = async () => {
+  const { token } = useAuthStore.getState();
+  if (!token) throw new Error("Not authenticated: missing token");
+
+  try {
+    return await getApi("profile/read-profile");
+  } catch (getErr) {
+    // Some backends may require POST; include token in body as requested.
+    return await postApi("profile/read-profile", { token });
+  }
+};
+
+/**
  * Logout helper that also clears auth store and redirects.
  */
 export const logout = () => {
