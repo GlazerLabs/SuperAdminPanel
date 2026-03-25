@@ -191,18 +191,7 @@ export default function SuperAdminLogin() {
       // Fetch full profile using the bearer token and store it for the dashboard header.
       try {
         const profileRes = await readProfile();
-        const profile =
-          profileRes?.profile ||
-          profileRes?.data?.profile ||
-          profileRes?.data?.user ||
-          profileRes?.user ||
-          profileRes?.data ||
-          profileRes ||
-          null;
-
-        if (profile) {
-          setAuth({ token, user: profile });
-        }
+        if (profileRes) setAuth({ token, user: profileRes });
       } catch (profileErr) {
         // Login should still succeed even if profile can't be loaded.
         console.error("Failed to load profile:", profileErr);

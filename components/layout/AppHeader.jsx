@@ -38,18 +38,7 @@ export default function AppHeader() {
       setProfileLoading(true);
       try {
         const profileRes = await readProfile();
-        const profile =
-          profileRes?.profile ||
-          profileRes?.data?.profile ||
-          profileRes?.data?.user ||
-          profileRes?.user ||
-          profileRes?.data ||
-          profileRes ||
-          null;
-
-        if (!cancelled && profile) {
-          setAuth({ token, user: profile });
-        }
+        if (!cancelled && profileRes) setAuth({ token, user: profileRes });
       } catch (e) {
         // Non-fatal: header can still show a fallback.
         // eslint-disable-next-line no-console
@@ -76,14 +65,27 @@ export default function AppHeader() {
   }, [user]);
 
   const roleLabel = useMemo(() => {
-    return user?.role || user?.type || user?.userType || "Admin";
+    // Your super-admin login uses `type: 6`
+    if (typeof user?.type === "number") {
+      if (user.type === 6) return "Super Admin";
+      return `Role ${user.type}`;
+    }
+
+    return user?.role || user?.userType || "Admin";
   }, [user]);
+
+  const subLabel = useMemo(() => {
+    if (typeof user?.email === "string" && user.email.trim().length > 0) return user.email;
+    return roleLabel;
+  }, [user, roleLabel]);
 
   const avatarUrl =
     typeof user?.avatar === "string"
       ? user.avatar
       : typeof user?.image === "string"
         ? user.image
+        : typeof user?.profile_pic_url === "string"
+          ? user.profile_pic_url
         : typeof user?.avatar_url === "string"
           ? user.avatar_url
           : null;
@@ -136,7 +138,7 @@ export default function AppHeader() {
             </div>
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              {roleLabel}
+              {subLabel}
             </div>
           </div>
         </div>
