@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Button from "../ui/Button";
-import { postApi } from "@/api";
+import { postApi, readProfile } from "@/api";
 import { useAuthStore } from "@/zustand/auth";
 
 function IconMail(props) {
@@ -185,7 +185,28 @@ export default function SuperAdminLogin() {
         throw new Error("No token returned from server.");
       }
 
+      // Save token immediately so other requests (like profile) can use it.
       setAuth({ token, user });
+
+      // Fetch full profile using the bearer token and store it for the dashboard header.
+      try {
+        const profileRes = await readProfile();
+        const profile =
+          profileRes?.profile ||
+          profileRes?.data?.profile ||
+          profileRes?.data?.user ||
+          profileRes?.user ||
+          profileRes?.data ||
+          profileRes ||
+          null;
+
+        if (profile) {
+          setAuth({ token, user: profile });
+        }
+      } catch (profileErr) {
+        // Login should still succeed even if profile can't be loaded.
+        console.error("Failed to load profile:", profileErr);
+      }
 
       // Go to home/dashboard, layout will show sidebar when logged in
       router.push("/");
