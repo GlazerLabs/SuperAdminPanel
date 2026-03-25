@@ -151,11 +151,31 @@ export const readProfile = async () => {
   const { token } = useAuthStore.getState();
   if (!token) throw new Error("Not authenticated: missing token");
 
+  const normalizeProfileResponse = (resp) => {
+    // Your backend response looks like:
+    // { status: 1, message: "success", data: [ { ...profileFields } ] }
+    if (Array.isArray(resp?.data)) {
+      return resp.data[0] ?? null;
+    }
+
+    // Other possible shapes (defensive)
+    return (
+      resp?.profile ??
+      resp?.data?.profile ??
+      resp?.data?.user ??
+      resp?.user ??
+      resp?.data ??
+      null
+    );
+  };
+
   try {
-    return await getApi("profile/read-profile");
+    const res = await getApi("profile/read-profile");
+    return normalizeProfileResponse(res);
   } catch (getErr) {
     // Some backends may require POST; include token in body as requested.
-    return await postApi("profile/read-profile", { token });
+    const res = await postApi("profile/read-profile", { token });
+    return normalizeProfileResponse(res);
   }
 };
 

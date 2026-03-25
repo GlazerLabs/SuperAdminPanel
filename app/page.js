@@ -7,7 +7,14 @@ import TrafficSourcesPieChart from "@/components/charts/TrafficSourcesPieChart";
 import PlaystoreInstallsChart from "@/components/charts/PlaystoreInstallsChart";
 import { fetchDashboardUserCounts } from "@/api";
 
-const PERIODS = ["Today", "Yesterday", "Last Week", "Last Month", "Quarterly"];
+const PERIODS = [
+  "Today",
+  "Yesterday",
+  "Last Week",
+  "Last Month",
+  "Quarterly",
+  "Overall",
+];
 
 export default function Home() {
   const [activePeriod, setActivePeriod] = useState("Today");
@@ -77,6 +84,19 @@ export default function Home() {
       return {
         analyticsQuery: "days=90",
         rangeLabelOverride: null,
+        countStartIso: startOfDay(start).toISOString(),
+        countEndIso: endOfDay(today).toISOString(),
+      };
+    }
+
+    if (activePeriod === "Overall") {
+      const start = new Date(today);
+      start.setFullYear(2025, 0, 1); // Jan 1, 2025 (local time)
+      const startYmd = toYmdLocal(start);
+      const endYmd = toYmdLocal(today);
+      return {
+        analyticsQuery: `startDate=${startYmd}&endDate=${endYmd}`,
+        rangeLabelOverride: "Overall (01-01-2025 to Today)",
         countStartIso: startOfDay(start).toISOString(),
         countEndIso: endOfDay(today).toISOString(),
       };
