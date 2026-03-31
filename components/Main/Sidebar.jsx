@@ -15,7 +15,7 @@ const primaryNav = [
 ];
 
 const secondaryNav = [
-  { label: "Setting", href: "/settings", icon: "settings" },
+  { label: "Settings", href: "/settings", icon: "settings" },
   { label: "Help Center", href: "/help", icon: "help" },
   { label: "Logout", icon: "logout", action: "logout" },
 ];
