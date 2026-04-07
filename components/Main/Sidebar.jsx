@@ -4,8 +4,17 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/zustand/auth";
+import { useModuleAccessStore } from "@/zustand/moduleAccess";
 
-const primaryNav = [
+const MODULE_NAV_MAP = {
+  super_lead_tracking: {
+    href: "/leads",
+    icon: "activity",
+    matchPrefix: true,
+  },
+};
+
+const ALL_PRIMARY_NAV = [
   { label: "Dashboard", href: "/", icon: "grid" },
   { label: "Members", href: "/members", icon: "org", matchPrefix: true },
   { label: "Role Management", href: "/roles", icon: "shield", matchPrefix: true },
@@ -13,6 +22,15 @@ const primaryNav = [
   { label: "Lead Tracking", href: "/leads", icon: "activity", matchPrefix: true },
   { label: "Activity Logs", href: "/tracking", icon: "activity" },
 ];
+
+const formatModuleLabel = (moduleKey = "") => {
+  const normalized = moduleKey.replace(/^super_/, "");
+  return normalized
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+};
 
 const secondaryNav = [
   { label: "Settings", href: "/settings", icon: "settings" },
@@ -140,6 +158,24 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
+  const myAccess = useModuleAccessStore((state) => state.myAccess);
+
+  const implicitFullAccess = !!myAccess?.data?.[0]?.implicit_full_access_frontend;
+  const modules = myAccess?.data?.[0]?.frontend_modules || {};
+  const primaryNav = implicitFullAccess
+    ? ALL_PRIMARY_NAV
+    : Object.keys(modules)
+        .filter((moduleKey) => modules?.[moduleKey]?.read)
+        .map((moduleKey) => {
+          const mapped = MODULE_NAV_MAP[moduleKey] || {};
+          return {
+            label: formatModuleLabel(moduleKey),
+            href: mapped.href || "#",
+            icon: mapped.icon || "grid",
+            matchPrefix: mapped.matchPrefix || false,
+          };
+        })
+        .filter((item) => item.href !== "#");
 
   const handleLogout = () => {
     logout();

@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { postApi, patchApi } from "@/api";
+import { postApi, patchApi, readProfile } from "@/api";
+import { useAuthStore } from "@/zustand/auth";
 import { useLeadFormStore, rowToInitialLead } from "@/zustand/leadForm";
 
 const STATUS_OPTIONS = [
@@ -202,6 +203,10 @@ export default function NewLeadPage() {
     clearLeadFlowState,
   } = useLeadFormStore();
   const isEditMode = !!selectedLead?.id;
+  const { token, user, loggedIn, setAuth } = useAuthStore();
+  const profileDisplayName = useMemo(() => {
+    return user?.name || user?.full_name || user?.username || user?.email || "";
+  }, [user]);
 
   const [lead, setLead] = useState(INITIAL_LEAD);
   const [currentStep, setCurrentStep] = useState(1);
@@ -242,6 +247,38 @@ export default function NewLeadPage() {
       name: leadName,
     }));
   }, [lead.activityName, selectedLead]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProfileIfNeeded() {
+      if (!loggedIn || !token) return;
+      if (user) return;
+
+      try {
+        const profileRes = await readProfile();
+        if (!cancelled && profileRes) setAuth({ token, user: profileRes });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("Failed to load profile in lead form:", e);
+      }
+    }
+
+    loadProfileIfNeeded();
+    return () => {
+      cancelled = true;
+    };
+  }, [loggedIn, token, user, setAuth]);
+
+  useEffect(() => {
+    // For create-flow, always use the logged-in user's profile as Lead owner.
+    // Input is disabled below, so the user can't override it.
+    if (isEditMode) return;
+    if (!profileDisplayName) return;
+
+    setLead((prev) => ({ ...prev, leadOwner: profileDisplayName }));
+    setErrors((prev) => ({ ...prev, leadOwner: undefined }));
+  }, [isEditMode, profileDisplayName]);
 
   const handleChange = (field) => (e) => {
     const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
@@ -344,6 +381,7 @@ export default function NewLeadPage() {
     activity_type: lead.activityType || "",
     city_region: lead.cityRegion || "",
     lead_source: lead.leadSource || "",
+    lead_owner: lead.leadOwner || "",
     stage: lead.currentStatus || "New",
     current_status: lead.currentStatus || "New",
     next_step: lead.nextStep || "",
@@ -407,6 +445,7 @@ export default function NewLeadPage() {
     activity_type: lead.activityType || "",
     city_region: lead.cityRegion || "",
     lead_source: lead.leadSource || "",
+    lead_owner: lead.leadOwner || "",
     stage: lead.currentStatus || "New",
     current_status: lead.currentStatus || "New",
     next_step: lead.nextStep || "",
@@ -549,7 +588,14 @@ export default function NewLeadPage() {
         </div>
         <button
           type="button"
-          onClick={() => setShowWorkspace(true)}
+          onClick={() => {
+            // setShowWorkspace(true);
+            window.open(
+              "https://glazergamesprivatelimited-my.sharepoint.com/personal/management_glazer_games/_layouts/15/onedrive.aspx?id=%2Fpersonal%2Fmanagement%5Fglazer%5Fgames%2FDocuments%2FLeads%20Trackers&ct=1775209978999&or=Teams%2DHL&ga=1&LOF=1",
+              "_blank",
+              "noopener,noreferrer"
+            );
+          }}
           className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
         >
           <span aria-hidden="true">📁</span>
@@ -844,8 +890,8 @@ export default function NewLeadPage() {
                   <input
                     type="text"
                     value={lead.leadOwner}
-                    onChange={handleChange("leadOwner")}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    disabled
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600 disabled:opacity-70"
                     placeholder="Who is driving this?"
                   />
                   {errors.leadOwner && (

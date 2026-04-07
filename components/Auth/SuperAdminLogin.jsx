@@ -4,8 +4,33 @@ import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Button from "../ui/Button";
-import { postApi, readProfile } from "@/api";
+import { fetchFrontendMyAccess, postApi, readProfile } from "@/api";
 import { useAuthStore } from "@/zustand/auth";
+import { useModuleAccessStore } from "@/zustand/moduleAccess";
+
+const MODULE_ROUTE_MAP = {
+  super_lead_tracking: "/leads",
+};
+
+const MODULE_ROUTE_ORDER = ["super_lead_tracking"];
+
+const getFirstAllowedRoute = (myAccessResponse) => {
+  const accessData = myAccessResponse?.data?.[0];
+  if (!accessData) return "/";
+
+  if (accessData?.implicit_full_access_frontend) {
+    return "/";
+  }
+
+  const modules = accessData?.frontend_modules || {};
+  for (const moduleKey of MODULE_ROUTE_ORDER) {
+    if (modules?.[moduleKey]?.read && MODULE_ROUTE_MAP[moduleKey]) {
+      return MODULE_ROUTE_MAP[moduleKey];
+    }
+  }
+
+  return "/";
+};
 
 function IconMail(props) {
   return (
@@ -151,6 +176,7 @@ function InputShell({ icon, children, right }) {
 export default function SuperAdminLogin() {
   const router = useRouter();
   const setAuth = useAuthStore((state) => state.setAuth);
+  const setMyAccess = useModuleAccessStore((state) => state.setMyAccess);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -174,7 +200,7 @@ export default function SuperAdminLogin() {
       const data = await postApi("auth/login-email-password", {
         email,
         password,
-        type: 6,
+        // type: 7,
       });
 
       // Try a couple of common token shapes; adjust if your API differs.
@@ -188,6 +214,18 @@ export default function SuperAdminLogin() {
       // Save token immediately so other requests (like profile) can use it.
       setAuth({ token, user });
 
+      let nextRoute = "/";
+
+      // Fetch and cache frontend module access right after login.
+      try {
+        const myAccess = await fetchFrontendMyAccess(token);
+        setMyAccess(myAccess);
+        nextRoute = getFirstAllowedRoute(myAccess);
+      } catch (accessErr) {
+        // Login should still succeed even if access map can't be loaded.
+        console.error("Failed to load module access:", accessErr);
+      }
+
       // Fetch full profile using the bearer token and store it for the dashboard header.
       try {
         const profileRes = await readProfile();
@@ -197,8 +235,8 @@ export default function SuperAdminLogin() {
         console.error("Failed to load profile:", profileErr);
       }
 
-      // Go to home/dashboard, layout will show sidebar when logged in
-      router.push("/");
+      // Wait for access and navigate to first allowed route.
+      router.push(nextRoute);
     } catch (err) {
       const message =
         err?.message ||
