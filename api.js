@@ -52,6 +52,8 @@ export const postApi = async (endpoint, data) => {
 
   const { token } = useAuthStore.getState();
 
+  console.log("url", url);
+
   try {
     const headers = {
       "Content-Type": "application/json",
@@ -107,6 +109,40 @@ export const patchApi = async (endpoint, data) => {
     // eslint-disable-next-line no-console
     console.error("API error:", error);
     throw error;
+  }
+};
+
+/**
+ * Simple PUT request function using axios.
+ * Pass only the endpoint and body data.
+ */
+export const putApi = async (endpoint, data) => {
+  const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+  const url = baseUrl.startsWith("http")
+    ? `${baseUrl}/${endpoint}`
+    : `${baseUrl}/${endpoint}`.replace(/\/+/g, "/").replace(/\/$/, "");
+
+  const { token } = useAuthStore.getState();
+
+  try {
+    const headers = {
+      "Content-Type": "application/json",
+    };
+
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await axios.put(url, data, {
+      headers,
+      withCredentials: true,
+    });
+
+    return response.data;
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("API error:", error.response?.data || error);
+    throw error.response?.data || error;
   }
 };
 
@@ -177,6 +213,26 @@ export const readProfile = async () => {
     const res = await postApi("profile/read-profile", { token });
     return normalizeProfileResponse(res);
   }
+};
+
+/**
+ * Fetch frontend module access for current logged-in user.
+ */
+export const fetchFrontendMyAccess = async (accessToken) => {
+  const token = accessToken || useAuthStore.getState()?.token;
+  if (!token) throw new Error("Not authenticated: missing token");
+
+  const response = await axios.get(
+    "https://oap-v2.thryl-prod.com/api/v2/access-module/frontend/my-access",
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      withCredentials: true,
+    }
+  );
+
+  return response.data;
 };
 
 /**

@@ -253,7 +253,7 @@ export default function LeadTrackingPage() {
         setLoading(true);
         setError(null);
 
-        const json = await getApi("lead-tracking", { page: 1, limit: 10 });
+        const json = await getApi("lead-tracking", { page: 1, limit: 100 });
         if (!json || json.status !== 1 || !Array.isArray(json.data)) {
           throw new Error(json?.message || "Invalid leads response");
         }
