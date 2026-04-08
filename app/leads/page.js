@@ -263,7 +263,9 @@ export default function LeadTrackingPage() {
             ? item.lead_updates[0]
             : null;
 
+          // Raw `item` first so every API field is available for edit prefill; mapped keys win for table + form aliases.
           return {
+            ...item,
             id: item.id,
             brand: item.brand,
             activityName: item.activity,
@@ -551,6 +553,7 @@ export default function LeadTrackingPage() {
             type="button"
             onClick={() => {
               useLeadFormStore.getState().closeLeadForm();
+              useLeadFormStore.getState().clearLeadFlowState();
               router.push("/leads/new");
             }}
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:from-indigo-600 hover:via-purple-600 hover:to-pink-600"

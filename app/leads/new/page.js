@@ -26,10 +26,20 @@ const PRIMARY_CHANNELS = [
   "Referral",
   "Other",
 ];
+const MODE_OPTIONS = ["Online", "Offline", "Hybrid"];
+const ACTIVITY_TYPE_OPTIONS = [
+  { value: "Whitelabel", meaning: "You execute, client takes credit." },
+  { value: "Branded", meaning: "Your brand is visible in execution." },
+  { value: "Co-branded", meaning: "Both brands appear together." },
+  { value: "Sponsored", meaning: "Client sponsors an existing property." },
+  { value: "Owned IP", meaning: "Client owns the concept / format." },
+];
 
 const EXPENSE_MODELS = ["Fixed", "Revenue Share", "Hybrid", "TBD"];
 
 const PAYMENT_TERMS = ["Advance", "Milestones", "Post-completion", "NET 15", "NET 30", "Custom"];
+const SOW_STATUS_OPTIONS = ["Draft Sent", "Signed", "Pending", "Under Review"];
+const PO_STATUS_OPTIONS = ["Received", "Awaited", "Not Required", "Raised"];
 
 const DELIVERABLE_TYPES = [
   "Tournament / League",
@@ -83,6 +93,10 @@ const INITIAL_LEAD = {
   integrations: "",
   successMetrics: "",
   dependencies: "",
+  riskBlockers: "",
+  expectedClosureDate: "",
+  probability: "",
+  proposalSharedDate: "",
   expectedRevenueType: "value",
   expectedRevenueValue: "",
   expectedRevenueRange: "",
@@ -94,6 +108,9 @@ const INITIAL_LEAD = {
   revenueModel: "",
   invoiceEntity: "",
   discountTerms: "",
+  proposalLink: "",
+  sowStatus: "",
+  poStatus: "",
   proposalDueDate: "",
 };
 
@@ -210,7 +227,6 @@ export default function NewLeadPage() {
 
   const [lead, setLead] = useState(INITIAL_LEAD);
   const [currentStep, setCurrentStep] = useState(1);
-  const [leadId, setLeadId] = useState(null);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [workspaceTree, setWorkspaceTree] = useState(() => createDefaultWorkspace(""));
@@ -220,21 +236,23 @@ export default function NewLeadPage() {
   const requestLockRef = useRef(false);
 
   useEffect(() => {
-    if (selectedLead) {
-      setLead(rowToInitialLead(selectedLead));
-      setLeadId(leadFlowState?.leadId || selectedLead.id || null);
-      const savedStep = Number(selectedLead.nextstep ?? selectedLead.nextStepNumber ?? 1);
-      setCurrentStep(Math.min(STEP_DEFINITIONS.length, Math.max(1, savedStep || 1)));
-    } else {
-      setLead(INITIAL_LEAD);
-      // Fresh create flow should always start without lead id
-      // so first "Next" uses POST, not PATCH.
-      setLeadId(null);
-      setCurrentStep(1);
-    }
-  // Keep this tied to selected lead open/close only.
-  // Including leadFlowState here was resetting currentStep after successful step save.
+    if (!selectedLead) return;
+    setLead(rowToInitialLead(selectedLead));
+    const savedStep = Number(selectedLead.nextstep ?? selectedLead.nextStepNumber ?? 1);
+    setCurrentStep(Math.min(STEP_DEFINITIONS.length, Math.max(1, savedStep || 1)));
   }, [selectedLead]);
+
+  useEffect(() => {
+    if (selectedLead) return;
+    if (leadFlowState?.draft) {
+      setLead((prev) => ({ ...prev, ...leadFlowState.draft }));
+      const savedStep = Number(leadFlowState?.nextstep ?? 1);
+      setCurrentStep(Math.min(STEP_DEFINITIONS.length, Math.max(1, savedStep || 1)));
+      return;
+    }
+    setLead(INITIAL_LEAD);
+    setCurrentStep(1);
+  }, [selectedLead, leadFlowState]);
 
   useEffect(() => {
     const leadName =
@@ -340,39 +358,6 @@ export default function NewLeadPage() {
     return Object.keys(nextErrors).length === 0;
   };
 
-  const parseCreateLeadId = (response) => {
-    // Backend shape: { status, message, data: [ { id: "14", ... } ] }
-    const arrayId = Array.isArray(response?.data) ? response.data?.[0]?.id : null;
-    if (arrayId) return arrayId;
-
-    const direct =
-      response?.data?.id ||
-      response?.data?.data?.id ||
-      response?.data?.[0]?.id ||
-      response?.data?.lead_id ||
-      response?.data?.data?.lead_id ||
-      response?.id ||
-      response?.lead_id ||
-      response?.leadId ||
-      response?.data?.leadId ||
-      response?.data?.data?.leadId;
-    if (direct) return direct;
-
-    // Fallback: search nested response object for common id keys.
-    const stack = [response];
-    while (stack.length) {
-      const current = stack.pop();
-      if (!current || typeof current !== "object") continue;
-      if (current.id) return current.id;
-      if (current.lead_id) return current.lead_id;
-      if (current.leadId) return current.leadId;
-      Object.values(current).forEach((value) => {
-        if (value && typeof value === "object") stack.push(value);
-      });
-    }
-    return null;
-  };
-
   const buildCreatePayload = () => ({
     brand: lead.brand || "",
     account_type: "New",
@@ -381,6 +366,7 @@ export default function NewLeadPage() {
     activity_type: lead.activityType || "",
     city_region: lead.cityRegion || "",
     lead_source: lead.leadSource || "",
+    primary_channel: lead.primaryChannel || "",
     lead_owner: lead.leadOwner || "",
     stage: lead.currentStatus || "New",
     current_status: lead.currentStatus || "New",
@@ -401,10 +387,17 @@ export default function NewLeadPage() {
 
   const buildStepThreeUpdatePayload = () => ({
     current_status_summary: lead.objective || "",
+    industry: lead.deliverableTypes.join(","),
+    scope_summary: lead.geographyScope || "",
     expected_activity_date: lead.activityDate || "",
     execution_window_from: lead.activityWindowFrom || "",
     execution_window_to: lead.activityWindowTo || "",
     dependencies: lead.dependencies || "",
+    risk_blockers: lead.riskBlockers || "",
+    expected_closure_date: lead.expectedClosureDate || "",
+    probability: lead.probability || "",
+    proposal_shared_date: lead.proposalSharedDate || "",
+    proporsal_shared_date: lead.proposalSharedDate || "",
     nextstep: 3,
   });
 
@@ -426,15 +419,11 @@ export default function NewLeadPage() {
       gst_applicable: lead.gstApplicable || "Yes",
       expense_model: lead.expenseModel || "",
       revenue_model: lead.revenueModel || "",
+      proposal_link: lead.proposalLink || "",
+      sow_status: lead.sowStatus || "",
+      po_status: lead.poStatus || "",
       nextstep: 4,
     };
-  };
-
-  const buildUpdatePayloadByStep = (stepNumber) => {
-    if (stepNumber === 2) return buildStepTwoUpdatePayload();
-    if (stepNumber === 3) return buildStepThreeUpdatePayload();
-    if (stepNumber === 4) return buildStepFourUpdatePayload();
-    return { nextstep: stepNumber };
   };
 
   const buildStepOneUpdatePayload = () => ({
@@ -445,6 +434,7 @@ export default function NewLeadPage() {
     activity_type: lead.activityType || "",
     city_region: lead.cityRegion || "",
     lead_source: lead.leadSource || "",
+    primary_channel: lead.primaryChannel || "",
     lead_owner: lead.leadOwner || "",
     stage: lead.currentStatus || "New",
     current_status: lead.currentStatus || "New",
@@ -454,28 +444,31 @@ export default function NewLeadPage() {
     nextstep: 1,
   });
 
+  const buildUpdatePayloadByStep = (stepNumber) => {
+    if (stepNumber === 1) return buildStepOneUpdatePayload();
+    if (stepNumber === 2) return buildStepTwoUpdatePayload();
+    if (stepNumber === 3) return buildStepThreeUpdatePayload();
+    if (stepNumber === 4) return buildStepFourUpdatePayload();
+    return { nextstep: stepNumber };
+  };
+
+  const buildFinalPayload = () => ({
+    ...buildCreatePayload(),
+    ...buildStepTwoUpdatePayload(),
+    ...buildStepThreeUpdatePayload(),
+    ...buildStepFourUpdatePayload(),
+    nextstep: STEP_DEFINITIONS.length,
+  });
+
   const handleNext = async () => {
     if (!validateStep() || submitting || requestLockRef.current) return;
     requestLockRef.current = true;
     setSubmitting(true);
     try {
-      if (currentStep === 1 && !leadId) {
-        const response = await postApi("lead-tracking", buildCreatePayload());
-        const createdId = parseCreateLeadId(response);
-        if (createdId) setLeadId(createdId);
-        setLeadFlowState({ leadId: createdId || null, lastResponse: response, nextstep: 1 });
-      } else if (currentStep === 1 && leadId) {
-        const response = await patchApi(`lead-tracking/${leadId}`, buildStepOneUpdatePayload());
-        setLeadFlowState({ leadId, lastResponse: response, nextstep: 1 });
-      } else if (currentStep >= 2) {
-        const idToUpdate = leadId || selectedLead?.id;
-        if (!idToUpdate) throw new Error("Lead id missing for update.");
-        const response = await patchApi(
-          `lead-tracking/${idToUpdate}`,
-          buildUpdatePayloadByStep(currentStep)
-        );
-        setLeadFlowState({ leadId: idToUpdate, lastResponse: response, nextstep: currentStep });
-      }
+      setLeadFlowState({
+        draft: lead,
+        nextstep: Math.min(STEP_DEFINITIONS.length, currentStep + 1),
+      });
       setCurrentStep((s) => Math.min(STEP_DEFINITIONS.length, s + 1));
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -487,6 +480,7 @@ export default function NewLeadPage() {
   };
 
   const handleBack = () => {
+    setLeadFlowState({ draft: lead, nextstep: Math.max(1, currentStep - 1) });
     setCurrentStep((s) => Math.max(1, s - 1));
   };
 
@@ -501,32 +495,26 @@ export default function NewLeadPage() {
 
     setSubmitting(true);
     try {
-      if (currentStep === 1 && !leadId) {
-        const response = await postApi("lead-tracking", buildCreatePayload());
-        const createdId = parseCreateLeadId(response);
-        if (createdId) {
-          setLeadId(createdId);
-        }
-        setLeadFlowState({ leadId: createdId || null, lastResponse: response, nextstep: 1 });
-        if (!createdId) {
-          // eslint-disable-next-line no-console
-          console.warn("Lead created but id not found in response; step progression still allowed.");
-        }
-      } else {
-        const idToUpdate = leadId || selectedLead?.id;
-        if (!idToUpdate) throw new Error("Lead id missing for final update.");
+      if (isEditMode) {
+        if (!selectedLead?.id) throw new Error("Lead id missing for update.");
         const response = await patchApi(
-          `lead-tracking/${idToUpdate}`,
+          `lead-tracking/${selectedLead.id}`,
           buildUpdatePayloadByStep(currentStep)
         );
-        setLeadFlowState({ leadId: idToUpdate, lastResponse: response, nextstep: currentStep });
-      }
-      if (isEditMode) {
-        closeLeadForm();
+        const nextStep = Math.min(STEP_DEFINITIONS.length, currentStep + 1);
+        setLeadFlowState({ lastResponse: response, draft: lead, nextstep: nextStep });
+        if (currentStep < STEP_DEFINITIONS.length) {
+          setCurrentStep(nextStep);
+        } else {
+          closeLeadForm();
+          router.push("/leads");
+        }
       } else {
+        const response = await postApi("lead-tracking", buildFinalPayload());
+        setLeadFlowState({ lastResponse: response, draft: lead, nextstep: currentStep });
         clearLeadFlowState();
+        router.push("/leads");
       }
-      router.push("/leads");
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Failed to save lead", error);
@@ -991,6 +979,56 @@ export default function NewLeadPage() {
                     placeholder="Primary geography of brand / activity"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Mode</label>
+                  <select
+                    value={lead.mode}
+                    onChange={handleChange("mode")}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="">Select mode</option>
+                    {MODE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Activity type
+                  </label>
+                  <select
+                    value={lead.activityType}
+                    onChange={handleChange("activityType")}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="">Select activity type</option>
+                    {ACTIVITY_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.value}
+                      </option>
+                    ))}
+                  </select>
+                  {lead.activityType && (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {ACTIVITY_TYPE_OPTIONS.find((item) => item.value === lead.activityType)?.meaning}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Priority</label>
+                  <select
+                    value={lead.priority}
+                    onChange={handleChange("priority")}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="">Select priority</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                </div>
               </div>
             </section>
           )}
@@ -1157,6 +1195,45 @@ export default function NewLeadPage() {
                   <p className="text-xs text-rose-600">{errors.activityDate}</p>
                 )}
 
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">
+                      Expected closure date
+                    </label>
+                    <input
+                      type="date"
+                      value={lead.expectedClosureDate}
+                      onChange={handleChange("expectedClosureDate")}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">
+                      Probability (%)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={lead.probability}
+                      onChange={handleChange("probability")}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      placeholder="0-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">
+                      Proposal shared date
+                    </label>
+                    <input
+                      type="date"
+                      value={lead.proposalSharedDate}
+                      onChange={handleChange("proposalSharedDate")}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-slate-700">
                     Geography / scope summary <span className="text-rose-500">*</span>
@@ -1173,6 +1250,32 @@ export default function NewLeadPage() {
                       {errors.geographyScope}
                     </p>
                   )}
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">
+                      Dependencies
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={lead.dependencies}
+                      onChange={handleChange("dependencies")}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      placeholder="Approvals, assets, legal, logistics, etc."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">
+                      Risk blockers
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={lead.riskBlockers}
+                      onChange={handleChange("riskBlockers")}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      placeholder="Any blockers that can delay execution."
+                    />
+                  </div>
                 </div>
               </div>
             </section>
@@ -1331,6 +1434,60 @@ export default function NewLeadPage() {
                     </div>
                   </div>
                 </div>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="md:col-span-3">
+                    <label className="block text-sm font-medium text-slate-700">
+                      Proposal link
+                    </label>
+                    <input
+                      type="url"
+                      value={lead.proposalLink}
+                      onChange={handleChange("proposalLink")}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">
+                      SOW status
+                    </label>
+                    <select
+                      value={lead.sowStatus}
+                      onChange={handleChange("sowStatus")}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="">Select SOW status</option>
+                      {SOW_STATUS_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      SOW defines scope, timelines/milestones, and cost breakup.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">
+                      PO status
+                    </label>
+                    <select
+                      value={lead.poStatus}
+                      onChange={handleChange("poStatus")}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="">Select PO status</option>
+                      {PO_STATUS_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      PO is client financial approval required before invoicing.
+                    </p>
+                  </div>
+                </div>
               </div>
             </section>
           )}
@@ -1361,7 +1518,7 @@ export default function NewLeadPage() {
                 Back
               </button>
             )}
-            {currentStep < STEP_DEFINITIONS.length && (
+            {!isEditMode && currentStep < STEP_DEFINITIONS.length && (
               <button
                 type="button"
                 onClick={handleNext}
@@ -1371,14 +1528,24 @@ export default function NewLeadPage() {
                 {submitting ? "Saving…" : "Next step"}
               </button>
             )}
-            {currentStep === STEP_DEFINITIONS.length && (
+            {isEditMode && (
               <button
                 type="button"
                 onClick={handleSubmit}
                 disabled={submitting}
                 className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {submitting ? "Saving…" : isEditMode ? "Update lead" : "Save lead"}
+                {submitting ? "Saving…" : currentStep < STEP_DEFINITIONS.length ? "Save & next" : "Save update"}
+              </button>
+            )}
+            {!isEditMode && currentStep === STEP_DEFINITIONS.length && (
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {submitting ? "Saving…" : "Save lead"}
               </button>
             )}
           </div>
