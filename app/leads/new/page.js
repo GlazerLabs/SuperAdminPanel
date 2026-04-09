@@ -58,6 +58,10 @@ const STEP_DEFINITIONS = [
   { id: 4, title: "Commercials" },
 ];
 
+const LEAD_FOLDERS_URL =
+  process.env.NEXT_PUBLIC_LEAD_FOLDERS_URL ||
+  "https://glazergamesprivatelimited-my.sharepoint.com/my?id=%2Fpersonal%2Fkalpesh%5Fmahale%5Fglazer%5Fgames%2FDocuments%2FLead%20Folders&viewid=b4bed52c%2Dc1ee%2D4b86%2Db094%2D6987fb514d1a";
+
 const INITIAL_LEAD = {
   brand: "",
   activityName: "",
@@ -579,7 +583,7 @@ export default function NewLeadPage() {
           onClick={() => {
             // setShowWorkspace(true);
             window.open(
-              "https://glazergamesprivatelimited-my.sharepoint.com/personal/management_glazer_games/_layouts/15/onedrive.aspx?id=%2Fpersonal%2Fmanagement%5Fglazer%5Fgames%2FDocuments%2FLeads%20Trackers&ct=1775209978999&or=Teams%2DHL&ga=1&LOF=1",
+              LEAD_FOLDERS_URL,
               "_blank",
               "noopener,noreferrer"
             );

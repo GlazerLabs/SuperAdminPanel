@@ -32,6 +32,10 @@ const OUTCOME_OPTIONS = [
   "Other",
 ];
 
+const LEAD_FOLDERS_URL =
+  process.env.NEXT_PUBLIC_LEAD_FOLDERS_URL ||
+  "https://glazergamesprivatelimited-my.sharepoint.com/my?id=%2Fpersonal%2Fkalpesh%5Fmahale%5Fglazer%5Fgames%2FDocuments%2FLead%20Folders&viewid=b4bed52c%2Dc1ee%2D4b86%2Db094%2D6987fb514d1a";
+
 const STATUS_PILL_CLASS = {
   New: "bg-sky-50 text-sky-800 ring-sky-100",
   Contacted: "bg-violet-50 text-violet-800 ring-violet-100",
@@ -66,6 +70,11 @@ function textWithBreaks(v) {
   return cleaned || "—";
 }
 
+function parseNumericInput(value) {
+  const parsed = Number(String(value ?? "").replace(/[^0-9.]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function sliceDate(v) {
   if (!v) return "";
   const s = String(v);
@@ -85,6 +94,9 @@ function parseLeadFromApi(json, id) {
 function sortUpdates(updates) {
   if (!Array.isArray(updates)) return [];
   return [...updates].sort((a, b) => {
+    const ca = a?.created_at ? new Date(a.created_at).getTime() : 0;
+    const cb = b?.created_at ? new Date(b.created_at).getTime() : 0;
+    if (ca !== cb) return cb - ca;
     const da = sliceDate(a.update_date) || "";
     const db = sliceDate(b.update_date) || "";
     if (da !== db) return db.localeCompare(da);
@@ -227,7 +239,7 @@ export default function LeadDetailPage() {
     try {
       let raw = null;
       try {
-        raw = await getApi(`lead-tracking/${id}`);
+        raw = await getApi("lead-tracking", { id });
       } catch {
         raw = null;
       }
@@ -256,10 +268,10 @@ export default function LeadDetailPage() {
   const updates = useMemo(() => sortUpdates(lead?.lead_updates), [lead]);
 
   const latest = updates[0];
-
-  const stageNow = lead?.stage || lead?.current_status || "New";
-  const valueNow = Number(lead?.expected_revenue) || 0;
-  const expenseNow = Number(lead?.expected_expenses) || 0;
+  const previousUpdate = updates[0] || null;
+  const stageNow = previousUpdate?.stage_after || lead?.stage || lead?.current_status || "New";
+  const valueNow = Number(previousUpdate?.value_after ?? lead?.expected_revenue ?? 0) || 0;
+  const expenseNow = Number(previousUpdate?.expense_after ?? lead?.expected_expenses ?? 0) || 0;
 
   const openFollowUpModal = () => {
     setActionError(null);
@@ -292,6 +304,8 @@ export default function LeadDetailPage() {
     setActionOk(null);
     try {
       const ownerRaw = followUp.next_follow_up_owner_id?.toString().trim();
+      const inputValueAfter = parseNumericInput(followUp.value_after);
+      const inputExpenseAfter = parseNumericInput(followUp.expense_after);
       const patchBody = {
         lead_id: Number(lead.id),
         brand: lead.brand ?? "",
@@ -304,9 +318,9 @@ export default function LeadDetailPage() {
         stage_before: stageNow,
         stage_after: followUp.stage_after || stageNow,
         value_before: valueNow,
-        value_after: Number(String(followUp.value_after).replace(/[^0-9.]/g, "")) || valueNow,
+        value_after: inputValueAfter ?? valueNow,
         expense_before: expenseNow,
-        expense_after: Number(String(followUp.expense_after).replace(/[^0-9.]/g, "")) || expenseNow,
+        expense_after: inputExpenseAfter ?? expenseNow,
         next_action: followUp.next_action?.trim() || "",
         next_follow_up_date: followUp.next_follow_up_date || null,
         next_follow_up_owner_id: ownerRaw ? Number(ownerRaw) : null,
@@ -357,6 +371,10 @@ export default function LeadDetailPage() {
     };
     useLeadFormStore.getState().openLeadForm(mapped);
     router.push("/leads/new");
+  };
+
+  const openLeadFolders = () => {
+    window.open(LEAD_FOLDERS_URL, "_blank", "noopener,noreferrer");
   };
 
   if (loading) {
@@ -421,6 +439,14 @@ export default function LeadDetailPage() {
         <div className="inline-flex w-full flex-col rounded-2xl border border-slate-200/80 bg-white/90 p-1.5 shadow-sm sm:flex-row sm:items-center lg:w-auto">
           <button
             type="button"
+            onClick={openLeadFolders}
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 sm:text-sm"
+          >
+            <span className="text-base leading-none" aria-hidden="true">📁</span>
+            Open lead folders
+          </button>
+          <button
+            type="button"
             onClick={openFollowUpModal}
             className="inline-flex items-center justify-center whitespace-nowrap rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 sm:text-sm"
           >
@@ -464,9 +490,9 @@ export default function LeadDetailPage() {
       <section className="grid gap-5 xl:grid-cols-12">
         <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 p-6 text-white shadow-lg shadow-slate-900/20 transition-all hover:-translate-y-0.5 hover:shadow-xl sm:p-7 xl:col-span-4">
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/60">Commercial</p>
-          <p className="mt-3 text-3xl font-bold tabular-nums">{formatMoney(lead.expected_revenue)}</p>
+          <p className="mt-3 text-3xl font-bold tabular-nums">{formatMoney(valueNow)}</p>
           <p className="mt-1 text-sm text-white/75">Expected revenue</p>
-          <p className="mt-4 text-xl font-semibold tabular-nums text-white/90">{formatMoney(lead.expected_expenses)}</p>
+          <p className="mt-4 text-xl font-semibold tabular-nums text-white/90">{formatMoney(expenseNow)}</p>
           <p className="text-sm text-white/65">Expenses</p>
         </div>
         <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md sm:p-7 xl:col-span-3">
@@ -517,7 +543,17 @@ export default function LeadDetailPage() {
                 No entries yet. Use <strong className="text-slate-700">Follow-up note</strong> after a call or meeting.
               </div>
             ) : (
-              updates.map((u) => (
+              updates.map((u, idx) => {
+                const olderEntry = updates[idx + 1] || null;
+                const displayValueBefore = Number(
+                  olderEntry?.value_after ?? u.value_before ?? 0
+                );
+                const displayValueAfter = Number(u.value_after ?? u.value_before ?? 0);
+                const displayExpenseBefore = Number(
+                  olderEntry?.expense_after ?? u.expense_before ?? 0
+                );
+                const displayExpenseAfter = Number(u.expense_after ?? u.expense_before ?? 0);
+                return (
                 <article
                   key={u.id ?? `${u.update_date}-${u.created_by_id}`}
                   className="relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md sm:p-6"
@@ -545,13 +581,13 @@ export default function LeadDetailPage() {
                           Stage: {u.stage_before || "—"} <span className="text-indigo-600">→</span> {u.stage_after || "—"}
                         </span>
                       )}
-                      {(Number(u.value_before) !== Number(u.value_after) || Number(u.expense_before) !== Number(u.expense_after)) && (
+                      {(displayValueBefore !== displayValueAfter || displayExpenseBefore !== displayExpenseAfter) && (
                         <>
                           <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-900">
-                            Revenue: ₹{Number(u.value_before).toLocaleString("en-IN")} → ₹{Number(u.value_after).toLocaleString("en-IN")}
+                            Revenue: ₹{displayValueBefore.toLocaleString("en-IN")} → ₹{displayValueAfter.toLocaleString("en-IN")}
                           </span>
                           <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900">
-                            Expense: ₹{Number(u.expense_before).toLocaleString("en-IN")} → ₹{Number(u.expense_after).toLocaleString("en-IN")}
+                            Expense: ₹{displayExpenseBefore.toLocaleString("en-IN")} → ₹{displayExpenseAfter.toLocaleString("en-IN")}
                           </span>
                         </>
                       )}
@@ -577,7 +613,8 @@ export default function LeadDetailPage() {
                     ) : null}
                   </div>
                 </article>
-              ))
+                );
+              })
             )}
           </div>
         </section>

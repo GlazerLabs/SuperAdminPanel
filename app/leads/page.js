@@ -199,6 +199,16 @@ function parseRevenue(lead) {
   return 0;
 }
 
+function getLatestUpdate(updates) {
+  if (!Array.isArray(updates) || updates.length === 0) return null;
+  return [...updates].sort((a, b) => {
+    const at = a?.created_at ? new Date(a.created_at).getTime() : 0;
+    const bt = b?.created_at ? new Date(b.created_at).getTime() : 0;
+    if (at !== bt) return bt - at;
+    return Number(b?.id || 0) - Number(a?.id || 0);
+  })[0];
+}
+
 const STATUS_PILL_CLASS = {
   New: "bg-sky-50 text-sky-700",
   Contacted: "bg-violet-50 text-violet-700",
@@ -259,9 +269,7 @@ export default function LeadTrackingPage() {
         }
 
         const mapped = json.data.map((item) => {
-          const latestUpdate = Array.isArray(item.lead_updates) && item.lead_updates.length
-            ? item.lead_updates[0]
-            : null;
+          const latestUpdate = getLatestUpdate(item.lead_updates);
 
           // Raw `item` first so every API field is available for edit prefill; mapped keys win for table + form aliases.
           return {
@@ -291,9 +299,9 @@ export default function LeadTrackingPage() {
             activityDate: item.expected_activity_date?.slice?.(0, 10) || "",
             dependencies: latestUpdate?.dependencies || item.dependencies || "",
             expectedRevenueType: "value",
-            expectedRevenueValue: item.expected_revenue || "",
+            expectedRevenueValue: latestUpdate?.value_after ?? item.expected_revenue ?? "",
             expectedRevenueRange: "",
-            expectedExpenses: item.expected_expenses ?? "",
+            expectedExpenses: latestUpdate?.expense_after ?? item.expected_expenses ?? "",
           };
         });
 
@@ -540,7 +548,7 @@ export default function LeadTrackingPage() {
             Lead Tracking
           </h1>
           <p className="mt-1 text-sm text-slate-600">
-            Click a row for the lead overview, timeline, and follow-ups. Use <span className="font-medium text-slate-800">Guided</span> for the
+            Click a row for the lead overview, timeline, and follow-ups. Use <span className="font-medium text-slate-800">Edit</span> for the
             multi-step editor.
           </p>
         </div>
@@ -838,15 +846,28 @@ export default function LeadTrackingPage() {
                       <td className="px-4 py-2.5 text-right">
                         <button
                           type="button"
-                          title="Open guided multi-step editor"
+                          title="Edit lead in multi-step editor"
+                          aria-label="Edit lead"
                           onClick={(e) => {
                             e.stopPropagation();
                             useLeadFormStore.getState().openLeadForm(row);
                             router.push("/leads/new");
                           }}
-                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-100 bg-indigo-50/70 text-indigo-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-indigo-100 hover:text-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                         >
-                          Guided
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                          </svg>
                         </button>
                       </td>
                     </tr>
