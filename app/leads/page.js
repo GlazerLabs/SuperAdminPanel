@@ -263,7 +263,9 @@ export default function LeadTrackingPage() {
             ? item.lead_updates[0]
             : null;
 
+          // Raw `item` first so every API field is available for edit prefill; mapped keys win for table + form aliases.
           return {
+            ...item,
             id: item.id,
             brand: item.brand,
             activityName: item.activity,
@@ -538,7 +540,8 @@ export default function LeadTrackingPage() {
             Lead Tracking
           </h1>
           <p className="mt-1 text-sm text-slate-600">
-            First see all leads and health, then add structured leads in a guided flow.
+            Click a row for the lead overview, timeline, and follow-ups. Use <span className="font-medium text-slate-800">Guided</span> for the
+            multi-step editor.
           </p>
         </div>
         <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
@@ -551,6 +554,7 @@ export default function LeadTrackingPage() {
             type="button"
             onClick={() => {
               useLeadFormStore.getState().closeLeadForm();
+              useLeadFormStore.getState().clearLeadFlowState();
               router.push("/leads/new");
             }}
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:from-indigo-600 hover:via-purple-600 hover:to-pink-600"
@@ -745,6 +749,7 @@ export default function LeadTrackingPage() {
                 <th className="px-4 py-2.5">Channel</th>
                 <th className="px-4 py-2.5">Region</th>
                 <th className="px-4 py-2.5 text-right">Est. value</th>
+                <th className="px-4 py-2.5 text-right w-24">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -775,12 +780,15 @@ export default function LeadTrackingPage() {
                     <td className="px-4 py-3 text-right">
                       <div className="ml-auto h-3.5 w-16 rounded bg-slate-100" />
                     </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="ml-auto h-7 w-14 rounded-lg bg-slate-100" />
+                    </td>
                   </tr>
                 ))
               ) : leads.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     className="px-4 py-6 text-center text-xs text-slate-500"
                   >
                     No leads yet. Click &quot;Add lead&quot; to create your first one.
@@ -796,15 +804,11 @@ export default function LeadTrackingPage() {
                       key={row.id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => {
-                        useLeadFormStore.getState().openLeadForm(row);
-                        router.push("/leads/new");
-                      }}
+                      onClick={() => router.push(`/leads/${row.id}`)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          useLeadFormStore.getState().openLeadForm(row);
-                          router.push("/leads/new");
+                          router.push(`/leads/${row.id}`);
                         }
                       }}
                       className="hover:bg-slate-50/60 text-[13px] cursor-pointer"
@@ -830,6 +834,20 @@ export default function LeadTrackingPage() {
                       </td>
                       <td className="px-4 py-2.5 text-right text-slate-800">
                         {formatRevenueL(approxRevenue)}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <button
+                          type="button"
+                          title="Open guided multi-step editor"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            useLeadFormStore.getState().openLeadForm(row);
+                            router.push("/leads/new");
+                          }}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50"
+                        >
+                          Guided
+                        </button>
                       </td>
                     </tr>
                   );

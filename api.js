@@ -222,17 +222,11 @@ export const fetchFrontendMyAccess = async (accessToken) => {
   const token = accessToken || useAuthStore.getState()?.token;
   if (!token) throw new Error("Not authenticated: missing token");
 
-  const response = await axios.get(
-    "https://oap-v2.thryl-prod.com/api/v2/access-module/frontend/my-access",
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      withCredentials: true,
-    }
+  const response = await getApi(
+    "access-module/frontend/my-access",
   );
 
-  return response.data;
+  return response;
 };
 
 /**
