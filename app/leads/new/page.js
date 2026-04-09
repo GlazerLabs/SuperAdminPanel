@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { postApi, patchApi, readProfile } from "@/api";
+import { postApi, putApi, readProfile } from "@/api";
 import { useAuthStore } from "@/zustand/auth";
 import { useLeadFormStore, rowToInitialLead } from "@/zustand/leadForm";
 
@@ -497,7 +497,7 @@ export default function NewLeadPage() {
     try {
       if (isEditMode) {
         if (!selectedLead?.id) throw new Error("Lead id missing for update.");
-        const response = await patchApi(
+        const response = await putApi(
           `lead-tracking/${selectedLead.id}`,
           buildUpdatePayloadByStep(currentStep)
         );
