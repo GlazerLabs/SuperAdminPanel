@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { getApi, patchApi, putApi } from "@/api";
+import { parseIndianRupeeInput } from "@/lib/parseIndianRupee";
 import { rowToInitialLead, useLeadFormStore } from "@/zustand/leadForm";
 
 const STATUS_OPTIONS = [
@@ -60,19 +61,23 @@ function formatMoney(n) {
   if (n === undefined || n === null || n === "") return "—";
   const num = Number(n);
   if (!Number.isFinite(num)) return "—";
-  if (num >= 100000) return `₹${(num / 100000).toFixed(1)}L`;
-  return `₹${num.toLocaleString("en-IN")}`;
+  const absNum = Math.abs(num);
+  const formatUnit = (divisor, suffix) => {
+    const scaled = num / divisor;
+    const rounded = Number(scaled.toFixed(1));
+    return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)}${suffix}`;
+  };
+
+  if (absNum >= 10000000) return `₹${formatUnit(10000000, "Cr")}`;
+  if (absNum >= 100000) return `₹${formatUnit(100000, "L")}`;
+  if (absNum >= 1000) return `₹${formatUnit(1000, "K")}`;
+  return `₹${Math.round(num)}`;
 }
 
 function textWithBreaks(v) {
   if (v === undefined || v === null) return "—";
   const cleaned = String(v).replace(/\\n/g, "\n").trim();
   return cleaned || "—";
-}
-
-function parseNumericInput(value) {
-  const parsed = Number(String(value ?? "").replace(/[^0-9.]/g, ""));
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function sliceDate(v) {
@@ -104,6 +109,48 @@ function sortUpdates(updates) {
   });
 }
 
+/** API may return contact fields as arrays; coerce to a single trimmed string. */
+function scalarTrim(val) {
+  if (val === undefined || val === null) return "";
+  if (Array.isArray(val)) {
+    for (const item of val) {
+      const s = String(item ?? "").trim();
+      if (s) return s;
+    }
+    return "";
+  }
+  return String(val).trim();
+}
+
+function toStrArray(val) {
+  if (val === undefined || val === null) return [];
+  if (Array.isArray(val)) return val.map((x) => String(x ?? "").trim()).filter((s) => s !== "");
+  const s = String(val).trim();
+  return s ? [s] : [];
+}
+
+/** Zip parallel `primary_contact`, `designation`, `phone`, `email` arrays by index. */
+function contactsFromParallelLead(lead) {
+  if (!lead) return [];
+  const names = toStrArray(lead.primary_contact);
+  const desigs = toStrArray(lead.designation);
+  const phones = toStrArray(lead.phone);
+  const emails = toStrArray(lead.email);
+  const n = Math.max(names.length, desigs.length, phones.length, emails.length);
+  if (n === 0) return [];
+  const rows = [];
+  for (let i = 0; i < n; i++) {
+    const name = names[i] ?? "";
+    const designation = desigs[i] ?? "";
+    const phone = phones[i] ?? "";
+    const email = emails[i] ?? "";
+    if (name || designation || phone || email) {
+      rows.push({ name, designation, phone, email });
+    }
+  }
+  return rows;
+}
+
 /** Build PUT body from overview edit form (snake_case for API). */
 function buildPutBody(form) {
   const er = form.expected_revenue === "" ? null : Number(String(form.expected_revenue).replace(/[^0-9.]/g, ""));
@@ -115,28 +162,28 @@ function buildPutBody(form) {
     margin_percent = er > 0 ? Number(((gross_margin / er) * 100).toFixed(1)) : 0;
   }
   return {
-    brand: form.brand?.trim() || "",
-    activity: form.activity?.trim() || "",
+    brand: scalarTrim(form.brand),
+    activity: scalarTrim(form.activity),
     stage: form.stage || "",
     current_status: form.current_status || form.stage || "",
-    current_status_summary: form.current_status_summary?.trim() || "",
-    primary_contact: form.primary_contact?.trim() || "",
-    designation: form.designation?.trim() || "",
-    phone: form.phone?.trim() || "",
-    email: form.email?.trim() || "",
-    city_region: form.city_region?.trim() || "",
-    lead_source: form.lead_source?.trim() || "",
-    priority: form.priority?.trim() || "",
-    next_step: form.next_step?.trim() || "",
+    current_status_summary: scalarTrim(form.current_status_summary),
+    primary_contact: scalarTrim(form.primary_contact),
+    designation: scalarTrim(form.designation),
+    phone: scalarTrim(form.phone),
+    email: scalarTrim(form.email),
+    city_region: scalarTrim(form.city_region),
+    lead_source: scalarTrim(form.lead_source),
+    priority: scalarTrim(form.priority),
+    next_step: scalarTrim(form.next_step),
     next_follow_up_date: form.next_follow_up_date || null,
     expected_activity_date: form.expected_activity_date || null,
     expected_closure_date: form.expected_closure_date || null,
     expected_revenue: Number.isFinite(er) ? er : form.expected_revenue,
     expected_expenses: Number.isFinite(ee) ? ee : form.expected_expenses,
     ...(gross_margin !== null ? { gross_margin, margin_percent } : {}),
-    dependencies: form.dependencies?.trim() || "",
-    risk_blockers: form.risk_blockers?.trim() || "",
-    proposal_link: form.proposal_link?.trim() || "",
+    dependencies: scalarTrim(form.dependencies),
+    risk_blockers: scalarTrim(form.risk_blockers),
+    proposal_link: scalarTrim(form.proposal_link),
   };
 }
 
@@ -166,6 +213,14 @@ function emptyOverviewForm() {
   };
 }
 
+/** Backend key is `expance_excel_links` (spelling per API). */
+function pickExpenseExcelLink(row) {
+  if (!row) return "";
+  const v = row.expance_excel_links ?? row.expense_excel_links;
+  if (v === undefined || v === null) return "";
+  return String(v).trim();
+}
+
 function leadToOverviewForm(lead) {
   if (!lead) return emptyOverviewForm();
   return {
@@ -174,10 +229,10 @@ function leadToOverviewForm(lead) {
     stage: lead.stage || lead.current_status || "",
     current_status: lead.current_status || lead.stage || "",
     current_status_summary: lead.current_status_summary ?? "",
-    primary_contact: lead.primary_contact ?? "",
-    designation: lead.designation ?? "",
-    phone: lead.phone ?? "",
-    email: lead.email ?? "",
+    primary_contact: scalarTrim(lead.primary_contact),
+    designation: scalarTrim(lead.designation),
+    phone: scalarTrim(lead.phone),
+    email: scalarTrim(lead.email),
     city_region: lead.city_region ?? "",
     lead_source: lead.lead_source ?? "",
     priority: lead.priority ?? "",
@@ -208,6 +263,9 @@ export default function LeadDetailPage() {
   const [showEditRecord, setShowEditRecord] = useState(false);
   const [savingFollowUp, setSavingFollowUp] = useState(false);
   const [savingRecord, setSavingRecord] = useState(false);
+  const [showExpenseLinkModal, setShowExpenseLinkModal] = useState(false);
+  const [expenseLinkInput, setExpenseLinkInput] = useState("");
+  const [savingExpenseLink, setSavingExpenseLink] = useState(false);
 
   const [overviewForm, setOverviewForm] = useState(emptyOverviewForm);
 
@@ -273,6 +331,73 @@ export default function LeadDetailPage() {
   const valueNow = Number(previousUpdate?.value_after ?? lead?.expected_revenue ?? 0) || 0;
   const expenseNow = Number(previousUpdate?.expense_after ?? lead?.expected_expenses ?? 0) || 0;
 
+  const expenseExcelLink = useMemo(() => pickExpenseExcelLink(lead), [lead]);
+
+  const recordSummaryContacts = useMemo(() => contactsFromParallelLead(lead), [lead]);
+
+  const saveExpenseExcelLink = async (expanceExcelLinks) => {
+    if (!lead?.id) return;
+    setSavingExpenseLink(true);
+    setActionError(null);
+    setActionOk(null);
+    try {
+      const value = expanceExcelLinks === undefined || expanceExcelLinks === null ? "" : String(expanceExcelLinks).trim();
+      await putApi(`lead-tracking/${lead.id}`, {
+        expance_excel_links: value === "" ? "" : value,
+      });
+      setActionOk(value ? "Expense link saved." : "Expense link removed.");
+      setShowExpenseLinkModal(false);
+      await loadLead();
+    } catch (err) {
+      setActionError(err?.message || String(err) || "Could not save expense link");
+    } finally {
+      setSavingExpenseLink(false);
+    }
+  };
+
+  const openExpenseLinkModal = () => {
+    setExpenseLinkInput(pickExpenseExcelLink(lead));
+    setActionError(null);
+    setShowExpenseLinkModal(true);
+  };
+
+  const wonBanner = useMemo(() => {
+    if (stageNow !== "Won") return null;
+    const wonUpdate = updates.find((u) => String(u.stage_after) === "Won");
+    const closeRaw =
+      wonUpdate?.update_date ||
+      wonUpdate?.created_at ||
+      lead?.updated_at ||
+      lead?.updatedAt ||
+      null;
+    const closeDateStr = closeRaw ? sliceDate(closeRaw) : new Date().toISOString().slice(0, 10);
+    const closer =
+      wonUpdate?.username ||
+      wonUpdate?.full_name ||
+      (wonUpdate?.created_by_id != null ? `User ${wonUpdate.created_by_id}` : "") ||
+      lead?.lead_owner ||
+      lead?.full_name ||
+      lead?.username ||
+      "Team";
+    const marginFromLead = Number(lead?.margin_percent);
+    let marginLabel = "—";
+    if (Number.isFinite(marginFromLead) && marginFromLead >= 0) {
+      marginLabel = `${marginFromLead % 1 === 0 ? marginFromLead.toFixed(0) : marginFromLead.toFixed(1)}%`;
+    } else if (valueNow > 0) {
+      const pct = ((valueNow - expenseNow) / valueNow) * 100;
+      marginLabel = `${pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(1)}%`;
+    }
+    const createdRaw = lead?.created_at || lead?.createdAt;
+    const createdMs = createdRaw ? new Date(createdRaw).getTime() : NaN;
+    const closeMs = closeRaw ? new Date(closeRaw).getTime() : Date.now();
+    let daysLabel = "—";
+    if (Number.isFinite(createdMs) && Number.isFinite(closeMs)) {
+      const d = Math.max(0, Math.round((closeMs - createdMs) / 86400000));
+      daysLabel = `${d}d`;
+    }
+    return { closeDateStr, closer, marginLabel, daysLabel };
+  }, [stageNow, updates, lead, valueNow, expenseNow]);
+
   const openFollowUpModal = () => {
     setActionError(null);
     setActionOk(null);
@@ -304,8 +429,8 @@ export default function LeadDetailPage() {
     setActionOk(null);
     try {
       const ownerRaw = followUp.next_follow_up_owner_id?.toString().trim();
-      const inputValueAfter = parseNumericInput(followUp.value_after);
-      const inputExpenseAfter = parseNumericInput(followUp.expense_after);
+      const inputValueAfter = parseIndianRupeeInput(followUp.value_after);
+      const inputExpenseAfter = parseIndianRupeeInput(followUp.expense_after);
       const patchBody = {
         lead_id: Number(lead.id),
         brand: lead.brand ?? "",
@@ -409,6 +534,60 @@ export default function LeadDetailPage() {
 
   return (
     <main className="w-full space-y-8 pb-16">
+      {wonBanner && (
+        <section
+          className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-green-800 px-5 py-6 text-white shadow-lg shadow-emerald-900/25 sm:rounded-3xl sm:px-8 sm:py-7"
+          aria-label="Lead won"
+        >
+          <div
+            className="pointer-events-none absolute -right-8 -top-12 h-40 w-40 rounded-full bg-white/10 sm:h-48 sm:w-48"
+            aria-hidden
+          />
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-4">
+              <div
+                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-emerald-900/35 ring-1 ring-white/20 sm:h-16 sm:w-16"
+                aria-hidden
+              >
+                <span className="text-3xl sm:text-4xl">🏆</span>
+              </div>
+              <div className="min-w-0 pt-0.5">
+                <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Lead Won!</h2>
+                <p className="mt-1.5 text-sm text-emerald-50/95 sm:text-base">
+                  Deal closed successfully on {wonBanner.closeDateStr}
+                  {wonBanner.closer ? (
+                    <>
+                      {" "}
+                      · Closed by <span className="font-semibold text-white">{wonBanner.closer}</span>
+                    </>
+                  ) : null}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4 sm:gap-8 lg:shrink-0 lg:gap-10">
+              <div className="text-center sm:text-left">
+                <p className="text-xl font-bold tabular-nums sm:text-2xl">{formatMoney(valueNow)}</p>
+                <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-100/90 sm:text-[11px]">
+                  Final deal value
+                </p>
+              </div>
+              <div className="text-center sm:text-left">
+                <p className="text-xl font-bold tabular-nums sm:text-2xl">{wonBanner.marginLabel}</p>
+                <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-100/90 sm:text-[11px]">
+                  Net margin
+                </p>
+              </div>
+              <div className="text-center sm:text-left">
+                <p className="text-xl font-bold tabular-nums sm:text-2xl">{wonBanner.daysLabel}</p>
+                <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-100/90 sm:text-[11px]">
+                  Days to close
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-gradient-to-br from-white via-indigo-50/40 to-violet-50/40 px-6 py-7 shadow-sm sm:px-8">
       <div className="pointer-events-none absolute -right-12 -top-16 h-44 w-44 rounded-full bg-indigo-300/20 blur-2xl" />
       <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-violet-300/20 blur-2xl" />
@@ -494,6 +673,37 @@ export default function LeadDetailPage() {
           <p className="mt-1 text-sm text-white/75">Expected revenue</p>
           <p className="mt-4 text-xl font-semibold tabular-nums text-white/90">{formatMoney(expenseNow)}</p>
           <p className="text-sm text-white/65">Expenses</p>
+          <div className="mt-4 border-t border-white/10 pt-4">
+            {expenseExcelLink ? (
+              <a
+                href={
+                  /^https?:\/\//i.test(expenseExcelLink)
+                    ? expenseExcelLink
+                    : `https://${expenseExcelLink.replace(/^\/+/, "")}`
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                title={expenseExcelLink}
+                aria-label={`Open all expenses (${expenseExcelLink})`}
+                className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-200 underline decoration-white/30 underline-offset-2 hover:text-white"
+              >
+                <span aria-hidden className="text-base leading-none">
+                  📊
+                </span>
+                All expenses
+              </a>
+            ) : (
+              <p className="text-xs text-white/50">No expense sheet link yet.</p>
+            )}
+            <button
+              type="button"
+              onClick={openExpenseLinkModal}
+              className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold text-white shadow-sm backdrop-blur-sm transition hover:bg-white/15"
+            >
+              <span aria-hidden>➕</span>
+              {expenseExcelLink ? "Edit expense link" : "Add expense"}
+            </button>
+          </div>
         </div>
         <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md sm:p-7 xl:col-span-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Next steps</p>
@@ -584,10 +794,10 @@ export default function LeadDetailPage() {
                       {(displayValueBefore !== displayValueAfter || displayExpenseBefore !== displayExpenseAfter) && (
                         <>
                           <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-900">
-                            Revenue: ₹{displayValueBefore.toLocaleString("en-IN")} → ₹{displayValueAfter.toLocaleString("en-IN")}
+                            Revenue: {formatMoney(displayValueBefore)} → {formatMoney(displayValueAfter)}
                           </span>
                           <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900">
-                            Expense: ₹{displayExpenseBefore.toLocaleString("en-IN")} → ₹{displayExpenseAfter.toLocaleString("en-IN")}
+                            Expense: {formatMoney(displayExpenseBefore)} → {formatMoney(displayExpenseAfter)}
                           </span>
                         </>
                       )}
@@ -637,11 +847,43 @@ export default function LeadDetailPage() {
                 <dd className="font-medium text-slate-900">{lead.priority || "—"}</dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-500">Contact</dt>
-                <dd className="font-medium text-slate-900">
-                  {lead.primary_contact || "—"}
-                  <br />
-                  <span className="text-slate-600">{lead.phone || lead.email || ""}</span>
+                <dt className="text-xs text-slate-500">Contacts</dt>
+                <dd className="mt-1 space-y-3">
+                  {recordSummaryContacts.length === 0 ? (
+                    <span className="font-medium text-slate-900">—</span>
+                  ) : (
+                    recordSummaryContacts.map((c, idx) => (
+                      <div
+                        key={`${c.name}-${c.phone}-${idx}`}
+                        className="rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm"
+                      >
+                        <p className="font-semibold text-slate-900">{c.name || "—"}</p>
+                        {c.designation ? (
+                          <p className="mt-0.5 text-xs font-medium text-slate-500">{c.designation}</p>
+                        ) : null}
+                        {c.phone ? (
+                          <p className="mt-1.5 text-sm text-slate-700">
+                            <a
+                              href={`tel:${String(c.phone).replace(/\s/g, "")}`}
+                              className="text-indigo-700 hover:underline"
+                            >
+                              {c.phone}
+                            </a>
+                          </p>
+                        ) : null}
+                        {c.email ? (
+                          <p className="mt-0.5 text-sm">
+                            <a
+                              href={`mailto:${c.email}`}
+                              className="text-indigo-700 hover:underline wrap-break-word"
+                            >
+                              {c.email}
+                            </a>
+                          </p>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
                 </dd>
               </div>
             </dl>
@@ -802,6 +1044,14 @@ export default function LeadDetailPage() {
                       inputMode="decimal"
                       value={followUp.value_after}
                       onChange={(e) => setFollowUp((p) => ({ ...p, value_after: e.target.value }))}
+                      onBlur={() =>
+                        setFollowUp((p) => {
+                          const parsed = parseIndianRupeeInput(p.value_after);
+                          if (parsed === null) return p;
+                          return { ...p, value_after: String(parsed) };
+                        })
+                      }
+                      placeholder="E.g. 1000000, 10l, 1 cr"
                       className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm tabular-nums"
                     />
                   </label>
@@ -812,9 +1062,22 @@ export default function LeadDetailPage() {
                       inputMode="decimal"
                       value={followUp.expense_after}
                       onChange={(e) => setFollowUp((p) => ({ ...p, expense_after: e.target.value }))}
+                      onBlur={() =>
+                        setFollowUp((p) => {
+                          const parsed = parseIndianRupeeInput(p.expense_after);
+                          if (parsed === null) return p;
+                          return { ...p, expense_after: String(parsed) };
+                        })
+                      }
+                      placeholder="E.g. 900000, 9l, 50k"
                       className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm tabular-nums"
                     />
                   </label>
+                  <p className="text-[11px] text-slate-500 sm:col-span-2">
+                    You can use shorthand (spaces optional): <span className="font-medium text-slate-600">10l</span>,{" "}
+                    <span className="font-medium text-slate-600">1 cr</span>,{" "}
+                    <span className="font-medium text-slate-600">50k</span>. Values convert to rupees on blur.
+                  </p>
                   <p className="text-[11px] text-slate-500 sm:col-span-2">
                     Before: stage <strong>{stageNow}</strong>, revenue <strong>{formatMoney(valueNow)}</strong>, expenses{" "}
                     <strong>{formatMoney(expenseNow)}</strong>
@@ -1169,6 +1432,74 @@ export default function LeadDetailPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showExpenseLinkModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="expense-link-title"
+            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-200"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h2 id="expense-link-title" className="text-lg font-bold text-slate-900">
+                  Expense link
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Paste a URL to your expense sheet or Excel file (SharePoint, Drive, etc.). It opens in a new tab from
+                  the Commercial card.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowExpenseLinkModal(false)}
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <label className="mt-4 block text-sm">
+              <span className="font-medium text-slate-700">Expense link</span>
+              <input
+                type="url"
+                value={expenseLinkInput}
+                onChange={(e) => setExpenseLinkInput(e.target.value)}
+                placeholder="https://…"
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+            </label>
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                disabled={savingExpenseLink || !expenseExcelLink}
+                onClick={() => saveExpenseExcelLink("")}
+                className="rounded-xl px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Remove link
+              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowExpenseLinkModal(false)}
+                  className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={savingExpenseLink}
+                  onClick={() => saveExpenseExcelLink(expenseLinkInput)}
+                  className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  {savingExpenseLink ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

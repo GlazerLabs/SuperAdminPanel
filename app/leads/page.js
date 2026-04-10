@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList } from "recharts";
 import { getApi } from "@/api";
 import { useLeadFormStore } from "@/zustand/leadForm";
 
@@ -223,9 +223,26 @@ function getStatusPillClasses(status) {
   return STATUS_PILL_CLASS[status] || "bg-slate-100 text-slate-700";
 }
 
-function formatRevenueL(value) {
+function formatCompactIndian(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "0";
+
+  const absNum = Math.abs(num);
+  const formatUnit = (divisor, suffix) => {
+    const scaled = num / divisor;
+    const rounded = Number(scaled.toFixed(1));
+    return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)}${suffix}`;
+  };
+
+  if (absNum >= 10000000) return formatUnit(10000000, "Cr");
+  if (absNum >= 100000) return formatUnit(100000, "L");
+  if (absNum >= 1000) return formatUnit(1000, "K");
+  return String(Math.round(num));
+}
+
+function formatRevenue(value) {
   if (!value) return "—";
-  return `₹${(value / 100000).toFixed(1)}L`;
+  return `₹${formatCompactIndian(value)}`;
 }
 
 export default function LeadTrackingPage() {
@@ -601,7 +618,7 @@ export default function LeadTrackingPage() {
               Pipeline (approx.)
             </p>
             <p className="mt-3 text-3xl font-bold tracking-tight text-slate-900">
-              ₹{(totalPipeline / 100000).toFixed(1)}L
+              {formatRevenue(totalPipeline)}
             </p>
             <p className="mt-1 text-xs text-slate-500">Based on expected revenue fields</p>
           </div>
@@ -652,6 +669,8 @@ export default function LeadTrackingPage() {
                     tickLine={false}
                     axisLine={false}
                     tick={{ fontSize: 10, fill: "#9ca3af" }}
+                    tickFormatter={(value) => formatCompactIndian(value)}
+                    width={56}
                   />
                   <Tooltip
                     cursor={{ fill: "rgba(79,70,229,0.03)" }}
@@ -668,7 +687,7 @@ export default function LeadTrackingPage() {
                           <p className="text-slate-600">
                             Pipeline:{" "}
                             <span className="font-semibold text-slate-900">
-                              ₹{(row.value / 100000).toFixed(1)}L
+                              {formatRevenue(row.value)}
                             </span>
                           </p>
                         </div>
@@ -720,7 +739,16 @@ export default function LeadTrackingPage() {
                     );
                   }}
                 />
-                <Bar dataKey="count" fill="#0ea5e9" radius={[0, 6, 6, 0]} />
+                <Bar dataKey="count" fill="#0ea5e9" radius={[0, 6, 6, 0]}>
+                  <LabelList
+                    dataKey="count"
+                    position="right"
+                    fill="#0f172a"
+                    fontSize={11}
+                    fontWeight={600}
+                    formatter={(value) => (value > 0 ? value : "")}
+                  />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -841,7 +869,7 @@ export default function LeadTrackingPage() {
                         {row.cityRegion || "—"}
                       </td>
                       <td className="px-4 py-2.5 text-right text-slate-800">
-                        {formatRevenueL(approxRevenue)}
+                        {formatRevenue(approxRevenue)}
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         <button
