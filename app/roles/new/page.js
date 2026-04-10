@@ -6,10 +6,17 @@ import { useRouter } from "next/navigation";
 import { useRoles } from "@/contexts/RolesContext";
 import { getApi, postApi } from "@/api";
 
+function getNextRoleCode(roles) {
+  const numericCodes = roles
+    .map((r) => Number(r.roleCode ?? r.role_code))
+    .filter((n) => Number.isFinite(n) && n >= 1);
+  if (numericCodes.length === 0) return 1;
+  return Math.max(...numericCodes) + 1;
+}
+
 export default function AddNewRolePage() {
   const router = useRouter();
-  const { addRole } = useRoles();
-  const [roleCode, setRoleCode] = useState(`${Date.now()}`);
+  const { addRole, roles } = useRoles();
   const [roleName, setRoleName] = useState("");
   const [description, setDescription] = useState("");
   const [modulesBySection, setModulesBySection] = useState({
@@ -146,7 +153,7 @@ export default function AddNewRolePage() {
 
     try {
       const roleResponse = await postApi("role", {
-        role_code: Number(roleCode),
+        role_code: getNextRoleCode(roles),
         type: "FULL_ACCESS",
         name: roleName.trim(),
         is_active: 1,
@@ -209,20 +216,6 @@ export default function AddNewRolePage() {
             </div>
           </div>
           <div className="mt-6 space-y-4">
-            <div>
-              <label htmlFor="role-code" className="block text-sm font-medium text-slate-700 mb-1.5">
-                Role Code
-              </label>
-              <input
-                id="role-code"
-                type="number"
-                value={roleCode}
-                onChange={(e) => setRoleCode(e.target.value)}
-                required
-                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-slate-900 placeholder-slate-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                placeholder="Enter role code"
-              />
-            </div>
             <div>
               <label htmlFor="role-name" className="block text-sm font-medium text-slate-700 mb-1.5">
                 Role Name

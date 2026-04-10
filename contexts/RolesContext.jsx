@@ -8,19 +8,9 @@ const RolesContext = createContext(null);
 
 export function RolesProvider({ children, initialRoles }) {
   const [roles, setRoles] = useState(initialRoles ?? MOCK_ROLES);
+  const [rolesMeta, setRolesMeta] = useState(null);
 
   useEffect(() => {
-    const normalizeRole = (role) => ({
-      id: String(role?.id ?? role?.role_id ?? role?.role_code ?? Date.now()),
-      name: role?.name ?? role?.role_name ?? "Untitled Role",
-      description: role?.description ?? role?.type ?? "",
-      permissions: Array.isArray(role?.permissions) ? role.permissions : [],
-      memberCount: role?.memberCount ?? role?.member_count ?? 0,
-      roleCode: role?.role_code,
-      type: role?.type,
-      isActive: role?.is_active,
-    });
-
     const loadRoles = async () => {
       try {
         const response = await getApi("role", { page: 1, limit: 100 });
@@ -34,6 +24,44 @@ export function RolesProvider({ children, initialRoles }) {
             : Array.isArray(response?.roles)
               ? response.roles
               : [];
+
+        const userCounts =
+          nestedData?.userCounts && typeof nestedData.userCounts === "object"
+            ? nestedData.userCounts
+            : null;
+        const totalFromApi =
+          typeof nestedData?.total === "number" ? nestedData.total : rawRoles.length;
+
+        setRolesMeta({
+          total: totalFromApi,
+          userCounts,
+          totalUsers: typeof userCounts?.totalUsers === "number" ? userCounts.totalUsers : null,
+        });
+
+        const normalizeRole = (role) => {
+          const nameKey = String(role?.name ?? role?.role_name ?? "")
+            .trim()
+            .toLowerCase();
+          const countFromUserCounts =
+            userCounts && nameKey && typeof userCounts[nameKey] === "number"
+              ? userCounts[nameKey]
+              : undefined;
+
+          return {
+            id: String(role?.id ?? role?.role_id ?? role?.role_code ?? Date.now()),
+            name: role?.name ?? role?.role_name ?? "Untitled Role",
+            description: role?.description ?? role?.type ?? "",
+            permissions: Array.isArray(role?.permissions) ? role.permissions : [],
+            memberCount:
+              role?.memberCount ??
+              role?.member_count ??
+              countFromUserCounts ??
+              0,
+            roleCode: role?.role_code,
+            type: role?.type,
+            isActive: role?.is_active,
+          };
+        };
 
         if (rawRoles.length > 0) {
           setRoles(rawRoles.map(normalizeRole));
@@ -51,6 +79,9 @@ export function RolesProvider({ children, initialRoles }) {
   const addRole = useCallback((role) => {
     const id = String(role?.id ?? Date.now());
     setRoles((prev) => [...prev, { ...role, id, memberCount: role.memberCount ?? 0 }]);
+    setRolesMeta((prev) =>
+      prev && typeof prev.total === "number" ? { ...prev, total: prev.total + 1 } : prev
+    );
     return id;
   }, []);
 
@@ -62,6 +93,11 @@ export function RolesProvider({ children, initialRoles }) {
 
   const removeRole = useCallback((id) => {
     setRoles((prev) => prev.filter((r) => r.id !== id));
+    setRolesMeta((prev) =>
+      prev && typeof prev.total === "number" && prev.total > 0
+        ? { ...prev, total: prev.total - 1 }
+        : prev
+    );
   }, []);
 
   const getRoleById = useCallback(
@@ -71,7 +107,15 @@ export function RolesProvider({ children, initialRoles }) {
 
   return (
     <RolesContext.Provider
-      value={{ roles, setRoles, addRole, updateRole, removeRole, getRoleById }}
+      value={{
+        roles,
+        setRoles,
+        rolesMeta,
+        addRole,
+        updateRole,
+        removeRole,
+        getRoleById,
+      }}
     >
       {children}
     </RolesContext.Provider>

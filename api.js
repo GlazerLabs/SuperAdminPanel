@@ -3,6 +3,28 @@
 import axios from "axios";
 import { useAuthStore } from "@/zustand/auth";
 
+const sanitizePayload = (value) => {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed === "" ? undefined : trimmed;
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizePayload).filter((item) => item !== undefined);
+  }
+  if (typeof value === "object") {
+    const cleaned = Object.entries(value).reduce((acc, [key, val]) => {
+      const sanitized = sanitizePayload(val);
+      if (sanitized !== undefined) {
+        acc[key] = sanitized;
+      }
+      return acc;
+    }, {});
+    return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+  }
+  return value;
+};
+
 /**
  * Simple GET request function using axios.
  * Pass only the endpoint and optional query params.
@@ -63,7 +85,7 @@ export const postApi = async (endpoint, data) => {
       headers.Authorization = `Bearer ${token}`;
     }
 
-    const response = await axios.post(url, data, {
+    const response = await axios.post(url, sanitizePayload(data) ?? {}, {
       headers,
       withCredentials: true,
     });
