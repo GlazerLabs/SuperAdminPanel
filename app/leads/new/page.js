@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { postApi, putApi, readProfile } from "@/api";
+import { parseIndianRupeeInput } from "@/lib/parseIndianRupee";
 import { useAuthStore } from "@/zustand/auth";
 import { useLeadFormStore, rowToInitialLead } from "@/zustand/leadForm";
 
@@ -80,6 +81,7 @@ const INITIAL_LEAD = {
   phone: "",
   email: "",
   role: "",
+  contacts: [{ name: "", phone: "", email: "", role: "" }],
   decisionMakerKnown: "No",
   decisionMakerName: "",
   decisionMakerRole: "",
@@ -117,6 +119,47 @@ const INITIAL_LEAD = {
   poStatus: "",
   proposalDueDate: "",
 };
+
+function normalizeContacts(contacts, fallback = {}) {
+  const list = Array.isArray(contacts) ? contacts : [];
+  const normalized = list
+    .map((item) => ({
+      name: String(item?.name || item?.primary_contact || item?.full_name || "").trim(),
+      phone: String(item?.phone || "").trim(),
+      email: String(item?.email || "").trim(),
+      role: String(item?.role || item?.designation || "").trim(),
+    }))
+    .filter((item) => item.name || item.phone || item.email || item.role);
+
+  if (normalized.length) return normalized;
+
+  const fallbackContact = {
+    name: String(fallback.primaryContactName || "").trim(),
+    phone: String(fallback.phone || "").trim(),
+    email: String(fallback.email || "").trim(),
+    role: String(fallback.role || "").trim(),
+  };
+  if (fallbackContact.name || fallbackContact.phone || fallbackContact.email || fallbackContact.role) {
+    return [fallbackContact];
+  }
+
+  return [{ name: "", phone: "", email: "", role: "" }];
+}
+
+function withNormalizedContacts(draft) {
+  const merged = { ...INITIAL_LEAD, ...(draft || {}) };
+  const contacts = normalizeContacts(merged.contacts, merged);
+  const primary = contacts[0] || { name: "", phone: "", email: "", role: "" };
+
+  return {
+    ...merged,
+    contacts,
+    primaryContactName: merged.primaryContactName || primary.name || "",
+    phone: merged.phone || primary.phone || "",
+    email: merged.email || primary.email || "",
+    role: merged.role || primary.role || "",
+  };
+}
 
 function createDefaultWorkspace(rootName) {
   return {
@@ -239,9 +282,17 @@ export default function NewLeadPage() {
   const imageInputRef = useRef(null);
   const requestLockRef = useRef(false);
 
+  const showProposalBasicsFields = useMemo(
+    () =>
+      lead.currentStatus === "Proposal Shared" ||
+      Boolean(String(lead.proposalSharedDate ?? "").trim()) ||
+      Boolean(String(lead.proposalLink ?? "").trim()),
+    [lead.currentStatus, lead.proposalSharedDate, lead.proposalLink]
+  );
+
   useEffect(() => {
     if (!selectedLead) return;
-    setLead(rowToInitialLead(selectedLead));
+    setLead(withNormalizedContacts(rowToInitialLead(selectedLead)));
     const savedStep = Number(selectedLead.nextstep ?? selectedLead.nextStepNumber ?? 1);
     setCurrentStep(Math.min(STEP_DEFINITIONS.length, Math.max(1, savedStep || 1)));
   }, [selectedLead]);
@@ -249,12 +300,12 @@ export default function NewLeadPage() {
   useEffect(() => {
     if (selectedLead) return;
     if (leadFlowState?.draft) {
-      setLead((prev) => ({ ...prev, ...leadFlowState.draft }));
+      setLead(withNormalizedContacts(leadFlowState.draft));
       const savedStep = Number(leadFlowState?.nextstep ?? 1);
       setCurrentStep(Math.min(STEP_DEFINITIONS.length, Math.max(1, savedStep || 1)));
       return;
     }
-    setLead(INITIAL_LEAD);
+    setLead(withNormalizedContacts(INITIAL_LEAD));
     setCurrentStep(1);
   }, [selectedLead, leadFlowState]);
 
@@ -308,12 +359,69 @@ export default function NewLeadPage() {
     setErrors((prev) => ({ ...prev, [field]: undefined }));
   };
 
+  const handleExpectedRevenueValueBlur = () => {
+    setLead((prev) => {
+      const parsed = parseIndianRupeeInput(prev.expectedRevenueValue);
+      if (parsed === null) return prev;
+      return { ...prev, expectedRevenueValue: String(parsed) };
+    });
+  };
+
   const handleDeliverableToggle = (value) => {
     setLead((prev) => {
       const current = new Set(prev.deliverableTypes);
       if (current.has(value)) current.delete(value);
       else current.add(value);
       return { ...prev, deliverableTypes: Array.from(current) };
+    });
+  };
+
+  const handleContactChange = (index, field) => (e) => {
+    const value = e.target.value;
+    setLead((prev) => {
+      const nextContacts = [...(prev.contacts || [])];
+      nextContacts[index] = { ...(nextContacts[index] || {}), [field]: value };
+      const primary = nextContacts[0] || { name: "", phone: "", email: "", role: "" };
+      return {
+        ...prev,
+        contacts: nextContacts,
+        primaryContactName: primary.name || "",
+        phone: primary.phone || "",
+        email: primary.email || "",
+        role: primary.role || "",
+      };
+    });
+    setErrors((prev) => ({
+      ...prev,
+      contacts: undefined,
+      [`contacts_${index}_name`]: undefined,
+      [`contacts_${index}_phone`]: undefined,
+      [`contacts_${index}_email`]: undefined,
+      [`contacts_${index}_role`]: undefined,
+    }));
+  };
+
+  const handleAddContact = () => {
+    setLead((prev) => ({
+      ...prev,
+      contacts: [...(prev.contacts || []), { name: "", phone: "", email: "", role: "" }],
+    }));
+  };
+
+  const handleRemoveContact = (index) => {
+    setLead((prev) => {
+      const current = prev.contacts || [];
+      const nextContacts = current.filter((_, i) => i !== index);
+      const safeContacts = nextContacts.length ? nextContacts : [{ name: "", phone: "", email: "", role: "" }];
+      const primary = safeContacts[0] || { name: "", phone: "", email: "", role: "" };
+      return {
+        ...prev,
+        contacts: safeContacts,
+        primaryContactName: primary.name || "",
+        phone: primary.phone || "",
+        email: primary.email || "",
+        role: primary.role || "",
+      };
     });
   };
 
@@ -329,12 +437,26 @@ export default function NewLeadPage() {
       if (!lead.nextStep.trim()) nextErrors.nextStep = "Next step is required.";
       if (!lead.primaryChannel) nextErrors.primaryChannel = "Channel is required.";
     } else if (currentStep === 2) {
-      if (!lead.primaryContactName.trim()) nextErrors.primaryContactName = "Contact name is required.";
-      if (!lead.phone.trim() && !lead.email.trim()) {
-        nextErrors.phone = "Phone or email is required.";
-        nextErrors.email = "Phone or email is required.";
+      const filledContacts = (lead.contacts || [])
+        .map((contact, index) => ({ contact, index }))
+        .filter(({ contact }) => contact?.name || contact?.phone || contact?.email || contact?.role);
+
+      if (!filledContacts.length) {
+        nextErrors.contacts = "Add at least one contact/stakeholder.";
       }
-      if (!lead.role.trim()) nextErrors.role = "Role / designation is required.";
+
+      filledContacts.forEach(({ contact, index }) => {
+        if (!contact?.name?.trim()) {
+          nextErrors[`contacts_${index}_name`] = "Contact name is required.";
+        }
+        if (!contact?.role?.trim()) {
+          nextErrors[`contacts_${index}_role`] = "Role / designation is required.";
+        }
+        if (!contact?.phone?.trim() && !contact?.email?.trim()) {
+          nextErrors[`contacts_${index}_phone`] = "Phone or email is required.";
+          nextErrors[`contacts_${index}_email`] = "Phone or email is required.";
+        }
+      });
     } else if (currentStep === 3) {
       if (!lead.objective.trim()) nextErrors.objective = "Objective is required.";
       if (!lead.deliverableTypes.length) {
@@ -348,8 +470,13 @@ export default function NewLeadPage() {
       }
     } else if (currentStep === 4) {
       if (!lead.expectedRevenueType) nextErrors.expectedRevenueType = "Type is required.";
-      if (lead.expectedRevenueType === "value" && !lead.expectedRevenueValue.trim()) {
-        nextErrors.expectedRevenueValue = "Expected value is required.";
+      if (lead.expectedRevenueType === "value") {
+        if (!lead.expectedRevenueValue.trim()) {
+          nextErrors.expectedRevenueValue = "Expected value is required.";
+        } else if (parseIndianRupeeInput(lead.expectedRevenueValue) === null) {
+          nextErrors.expectedRevenueValue =
+            "Enter a valid amount (e.g. 800000, 8l, 1 cr, 1.5 lakh).";
+        }
       }
       if (lead.expectedRevenueType === "range" && !lead.expectedRevenueRange.trim()) {
         nextErrors.expectedRevenueRange = "Expected range is required.";
@@ -381,10 +508,18 @@ export default function NewLeadPage() {
   });
 
   const buildStepTwoUpdatePayload = () => ({
-    primary_contact: lead.primaryContactName || "",
-    designation: lead.role || "",
-    phone: lead.phone || "",
-    email: lead.email || "",
+    primary_contact: (lead.contacts || [])
+      .filter((contact) => contact?.name || contact?.phone || contact?.email || contact?.role)
+      .map((contact) => contact.name || ""),
+    designation: (lead.contacts || [])
+      .filter((contact) => contact?.name || contact?.phone || contact?.email || contact?.role)
+      .map((contact) => contact.role || ""),
+    phone: (lead.contacts || [])
+      .filter((contact) => contact?.name || contact?.phone || contact?.email || contact?.role)
+      .map((contact) => contact.phone || ""),
+    email: (lead.contacts || [])
+      .filter((contact) => contact?.name || contact?.phone || contact?.email || contact?.role)
+      .map((contact) => contact.email || ""),
     decision_maker: lead.decisionMakerName || "",
     nextstep: 2,
   });
@@ -408,7 +543,7 @@ export default function NewLeadPage() {
   const buildStepFourUpdatePayload = () => {
     const expectedRevenue =
       lead.expectedRevenueType === "value"
-        ? Number(String(lead.expectedRevenueValue).replace(/[^0-9.]/g, "")) || 0
+        ? parseIndianRupeeInput(lead.expectedRevenueValue) ?? 0
         : 0;
     const expectedExpenses = Number(String(lead.expectedExpenses || "0").replace(/[^0-9.]/g, "")) || 0;
     const grossMargin = expectedRevenue - expectedExpenses;
@@ -445,6 +580,9 @@ export default function NewLeadPage() {
     next_step: lead.nextStep || "",
     next_follow_up_date: lead.nextFollowUpDate || "",
     priority: lead.priority || "",
+    proposal_shared_date: lead.proposalSharedDate || "",
+    proporsal_shared_date: lead.proposalSharedDate || "",
+    proposal_link: lead.proposalLink || "",
     nextstep: 1,
   });
 
@@ -808,17 +946,25 @@ export default function NewLeadPage() {
               const isCompleted = currentStep > step.id;
               return (
                 <li key={step.id} className="flex flex-1 flex-col items-center gap-1">
-                  <div
-                    className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold ${
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isEditMode) return;
+                      setCurrentStep(step.id);
+                      setLeadFlowState({ draft: lead, nextstep: step.id });
+                    }}
+                    disabled={!isEditMode}
+                    className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold transition ${
                       isActive
                         ? "bg-indigo-600 text-white shadow-sm shadow-indigo-400/60"
                         : isCompleted
                           ? "bg-emerald-500 text-white shadow-sm shadow-emerald-400/60"
                           : "bg-white text-slate-500 ring-1 ring-slate-200"
-                    }`}
+                    } ${isEditMode ? "cursor-pointer hover:scale-[1.04]" : "cursor-default"}`}
+                    aria-label={`Go to step ${step.id}: ${step.title}`}
                   >
                     {step.id}
-                  </div>
+                  </button>
                   <p
                     className={`text-[11px] font-medium ${
                       isActive
@@ -910,6 +1056,33 @@ export default function NewLeadPage() {
                     <p className="mt-1 text-xs text-rose-600">{errors.currentStatus}</p>
                   )}
                 </div>
+                {showProposalBasicsFields && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700">
+                        Proposal shared date
+                      </label>
+                      <input
+                        type="date"
+                        value={lead.proposalSharedDate}
+                        onChange={handleChange("proposalSharedDate")}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700">
+                        Proposal link
+                      </label>
+                      <input
+                        type="url"
+                        value={lead.proposalLink}
+                        onChange={handleChange("proposalLink")}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        placeholder="https://…"
+                      />
+                    </div>
+                  </>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-slate-700">
                     Next follow-up date <span className="text-rose-500">*</span>
@@ -1047,57 +1220,92 @@ export default function NewLeadPage() {
                   Capture the people who will make this deal move.
                 </p>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">
-                    Primary contact name <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={lead.primaryContactName}
-                    onChange={handleChange("primaryContactName")}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    placeholder="Main point of contact"
-                  />
-                  {errors.primaryContactName && (
-                    <p className="mt-1 text-xs text-rose-600">{errors.primaryContactName}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">Phone</label>
-                  <input
-                    type="tel"
-                    value={lead.phone}
-                    onChange={handleChange("phone")}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    placeholder="+91..."
-                  />
-                  {errors.phone && <p className="mt-1 text-xs text-rose-600">{errors.phone}</p>}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">Email</label>
-                  <input
-                    type="email"
-                    value={lead.email}
-                    onChange={handleChange("email")}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    placeholder="name@brand.com"
-                  />
-                  {errors.email && <p className="mt-1 text-xs text-rose-600">{errors.email}</p>}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">
-                    Role / designation <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={lead.role}
-                    onChange={handleChange("role")}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    placeholder="Brand manager, marketing head..."
-                  />
-                  {errors.role && <p className="mt-1 text-xs text-rose-600">{errors.role}</p>}
-                </div>
+              <div className="space-y-4">
+                {(lead.contacts || []).map((contact, index) => (
+                  <div key={`contact-${index}`} className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                        {index === 0 ? "Primary contact" : `Stakeholder ${index}`}
+                      </p>
+                      {(lead.contacts || []).length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveContact(index)}
+                          className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700">
+                          Contact name <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={contact.name || ""}
+                          onChange={handleContactChange(index, "name")}
+                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          placeholder="Main point of contact"
+                        />
+                        {errors[`contacts_${index}_name`] && (
+                          <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_name`]}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700">Phone</label>
+                        <input
+                          type="tel"
+                          value={contact.phone || ""}
+                          onChange={handleContactChange(index, "phone")}
+                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          placeholder="+91..."
+                        />
+                        {errors[`contacts_${index}_phone`] && (
+                          <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_phone`]}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700">Email</label>
+                        <input
+                          type="email"
+                          value={contact.email || ""}
+                          onChange={handleContactChange(index, "email")}
+                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          placeholder="name@brand.com"
+                        />
+                        {errors[`contacts_${index}_email`] && (
+                          <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_email`]}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700">
+                          Role / designation <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={contact.role || ""}
+                          onChange={handleContactChange(index, "role")}
+                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          placeholder="Brand manager, marketing head..."
+                        />
+                        {errors[`contacts_${index}_role`] && (
+                          <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_role`]}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {errors.contacts && <p className="text-xs text-rose-600">{errors.contacts}</p>}
+                <button
+                  type="button"
+                  onClick={handleAddContact}
+                  className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                >
+                  <span className="text-sm leading-none">+</span>
+                  Add contact / stakeholder
+                </button>
               </div>
             </section>
           )}
@@ -1199,7 +1407,7 @@ export default function NewLeadPage() {
                   <p className="text-xs text-rose-600">{errors.activityDate}</p>
                 )}
 
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <label className="block text-sm font-medium text-slate-700">
                       Expected closure date
@@ -1223,17 +1431,6 @@ export default function NewLeadPage() {
                       onChange={handleChange("probability")}
                       className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       placeholder="0-100"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700">
-                      Proposal shared date
-                    </label>
-                    <input
-                      type="date"
-                      value={lead.proposalSharedDate}
-                      onChange={handleChange("proposalSharedDate")}
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
                   </div>
                 </div>
@@ -1337,9 +1534,17 @@ export default function NewLeadPage() {
                           type="text"
                           value={lead.expectedRevenueValue}
                           onChange={handleChange("expectedRevenueValue")}
+                          onBlur={handleExpectedRevenueValueBlur}
                           className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          placeholder="E.g. 8,00,000"
+                          placeholder="E.g. 800000, 8l, 1 cr, 1.5 lakh"
                         />
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          Spaces and case don&apos;t matter: <span className="font-medium text-slate-600">1cr</span>,{" "}
+                          <span className="font-medium text-slate-600">1 cr</span>,{" "}
+                          <span className="font-medium text-slate-600">10l</span>,{" "}
+                          <span className="font-medium text-slate-600">1 lakh</span>. On blur we convert to rupees for
+                          the API.
+                        </p>
                         {errors.expectedRevenueValue && (
                           <p className="mt-1 text-xs text-rose-600">
                             {errors.expectedRevenueValue}
@@ -1438,19 +1643,7 @@ export default function NewLeadPage() {
                     </div>
                   </div>
                 </div>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="md:col-span-3">
-                    <label className="block text-sm font-medium text-slate-700">
-                      Proposal link
-                    </label>
-                    <input
-                      type="url"
-                      value={lead.proposalLink}
-                      onChange={handleChange("proposalLink")}
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                      placeholder="https://..."
-                    />
-                  </div>
+                <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <label className="block text-sm font-medium text-slate-700">
                       SOW status

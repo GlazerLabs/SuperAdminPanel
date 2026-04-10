@@ -31,6 +31,45 @@ export default function RoleDetailPage() {
   const allPermissionIndeterminate =
     !allPermissionChecked && moduleKeys.some((key) => moduleAccess[key] !== "NONE");
 
+  const extractRoleAccessEntries = (response) => {
+    const payload = Array.isArray(response?.data) ? response.data[0] : response?.data ?? response;
+    if (Array.isArray(payload?.entries)) return payload.entries;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.role_access)) return payload.role_access;
+    if (Array.isArray(payload?.access)) return payload.access;
+    if (Array.isArray(response?.entries)) return response.entries;
+    return [];
+  };
+
+  const mapFrontendModulesToAccess = (response, defaultAccess) => {
+    const payload = Array.isArray(response?.data) ? response.data[0] : response?.data ?? response;
+    const modules = payload?.frontend_modules;
+    if (!modules || typeof modules !== "object" || Array.isArray(modules)) return false;
+
+    Object.entries(modules).forEach(([moduleKey, actions]) => {
+      if (!(moduleKey in defaultAccess)) return;
+
+      const canCreate = Boolean(actions?.create);
+      const canRead = Boolean(actions?.read);
+      const canUpdate = Boolean(actions?.update);
+      const canDelete = Boolean(actions?.delete);
+
+      if (canCreate && canRead && canUpdate && canDelete) {
+        defaultAccess[moduleKey] = "FULL";
+        return;
+      }
+
+      if (canCreate || canRead || canUpdate || canDelete) {
+        defaultAccess[moduleKey] = "VIEW";
+        return;
+      }
+
+      defaultAccess[moduleKey] = "NONE";
+    });
+
+    return true;
+  };
+
   useEffect(() => {
     if (role) {
       setName(role.name ?? "");
@@ -61,10 +100,30 @@ export default function RoleDetailPage() {
             .filter(Boolean)
             .map((key) => [key, "NONE"])
         );
-
-        (role?.permissions || []).forEach((key) => {
-          if (key in defaultAccess) defaultAccess[key] = "FULL";
+        const accessResponse = await getApi("access-module/frontend/role-access", {
+          role_code: role?.roleCode,
         });
+        const didMapFrontendModules = mapFrontendModulesToAccess(accessResponse, defaultAccess);
+        const accessEntries = extractRoleAccessEntries(accessResponse);
+
+        if (!didMapFrontendModules && accessEntries.length > 0) {
+          accessEntries.forEach((entry) => {
+            const level = entry?.access_level;
+            if (!level || !["NONE", "VIEW", "FULL"].includes(level)) return;
+            if (entry?.module_key && entry.module_key in defaultAccess) {
+              defaultAccess[entry.module_key] = level;
+            }
+            if (Array.isArray(entry?.module_keys)) {
+              entry.module_keys.forEach((moduleKey) => {
+                if (moduleKey in defaultAccess) defaultAccess[moduleKey] = level;
+              });
+            }
+          });
+        } else {
+          (role?.permissions || []).forEach((key) => {
+            if (key in defaultAccess) defaultAccess[key] = "FULL";
+          });
+        }
 
         setModulesBySection(groupedModules);
         setModuleAccess(defaultAccess);

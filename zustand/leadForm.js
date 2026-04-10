@@ -36,6 +36,46 @@ function normalizeDeliverableTypes(row) {
   return [];
 }
 
+function normalizeContacts(row) {
+  const raw = row.contacts ?? row.contacts_stakeholders ?? row.stakeholders;
+  const fromArray = Array.isArray(raw)
+    ? raw
+        .map((item) => ({
+          name: pickText(item?.name, item?.primary_contact, item?.full_name),
+          phone: pickText(item?.phone),
+          email: pickText(item?.email),
+          role: pickText(item?.role, item?.designation),
+        }))
+        .filter((c) => c.name || c.phone || c.email || c.role)
+    : [];
+
+  if (fromArray.length) return fromArray;
+
+  const names = Array.isArray(row.primary_contact) ? row.primary_contact : [];
+  const phones = Array.isArray(row.phone) ? row.phone : [];
+  const emails = Array.isArray(row.email) ? row.email : [];
+  const roles = Array.isArray(row.designation) ? row.designation : [];
+  const maxLen = Math.max(names.length, phones.length, emails.length, roles.length);
+  if (maxLen > 0) {
+    const fromParallelArrays = Array.from({ length: maxLen }, (_, index) => ({
+      name: pickText(names[index]),
+      phone: pickText(phones[index]),
+      email: pickText(emails[index]),
+      role: pickText(roles[index]),
+    })).filter((c) => c.name || c.phone || c.email || c.role);
+    if (fromParallelArrays.length) return fromParallelArrays;
+  }
+
+  const fallback = {
+    name: pickText(row.primaryContactName, row.primary_contact),
+    phone: pickText(row.phone),
+    email: pickText(row.email),
+    role: pickText(row.role, row.designation),
+  };
+  if (fallback.name || fallback.phone || fallback.email || fallback.role) return [fallback];
+  return [{ name: "", phone: "", email: "", role: "" }];
+}
+
 /**
  * Maps a table row (from leads list) and/or raw API records to the same shape as the add form (INITIAL_LEAD)
  * so /leads/new can reuse the exact same form for edit.
@@ -98,6 +138,7 @@ export function rowToInitialLead(row) {
     sowStatus: pickText(row.sowStatus, row.sow_status),
     poStatus: pickText(row.poStatus, row.po_status),
     proposalDueDate: sliceDateIso(pickText(row.proposalDueDate, row.proposal_due_date)),
+    contacts: normalizeContacts(row),
   };
 }
 
