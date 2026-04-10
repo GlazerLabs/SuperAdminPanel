@@ -129,6 +129,18 @@ function toStrArray(val) {
   return s ? [s] : [];
 }
 
+/** Comma-separated industry string → readable "A, B" spacing. */
+function formatIndustryDisplay(val) {
+  if (val === undefined || val === null) return "";
+  const s = String(val).trim();
+  if (!s) return "";
+  return s
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
 /** Zip parallel `primary_contact`, `designation`, `phone`, `email` arrays by index. */
 function contactsFromParallelLead(lead) {
   if (!lead) return [];
@@ -327,7 +339,15 @@ export default function LeadDetailPage() {
 
   const latest = updates[0];
   const previousUpdate = updates[0] || null;
-  const stageNow = previousUpdate?.stage_after || lead?.stage || lead?.current_status || "New";
+  const stageNow = (() => {
+    const cs = String(lead?.current_status ?? "").trim();
+    if (cs) return cs;
+    const sa = previousUpdate?.stage_after;
+    if (sa != null && String(sa).trim() !== "") return String(sa).trim();
+    const st = String(lead?.stage ?? "").trim();
+    if (st) return st;
+    return "New";
+  })();
   const valueNow = Number(previousUpdate?.value_after ?? lead?.expected_revenue ?? 0) || 0;
   const expenseNow = Number(previousUpdate?.expense_after ?? lead?.expected_expenses ?? 0) || 0;
 
@@ -362,7 +382,7 @@ export default function LeadDetailPage() {
   };
 
   const wonBanner = useMemo(() => {
-    if (stageNow !== "Won") return null;
+    if (String(lead?.current_status ?? "").trim() !== "Won") return null;
     const wonUpdate = updates.find((u) => String(u.stage_after) === "Won");
     const closeRaw =
       wonUpdate?.update_date ||
@@ -371,32 +391,8 @@ export default function LeadDetailPage() {
       lead?.updatedAt ||
       null;
     const closeDateStr = closeRaw ? sliceDate(closeRaw) : new Date().toISOString().slice(0, 10);
-    const closer =
-      wonUpdate?.username ||
-      wonUpdate?.full_name ||
-      (wonUpdate?.created_by_id != null ? `User ${wonUpdate.created_by_id}` : "") ||
-      lead?.lead_owner ||
-      lead?.full_name ||
-      lead?.username ||
-      "Team";
-    const marginFromLead = Number(lead?.margin_percent);
-    let marginLabel = "—";
-    if (Number.isFinite(marginFromLead) && marginFromLead >= 0) {
-      marginLabel = `${marginFromLead % 1 === 0 ? marginFromLead.toFixed(0) : marginFromLead.toFixed(1)}%`;
-    } else if (valueNow > 0) {
-      const pct = ((valueNow - expenseNow) / valueNow) * 100;
-      marginLabel = `${pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(1)}%`;
-    }
-    const createdRaw = lead?.created_at || lead?.createdAt;
-    const createdMs = createdRaw ? new Date(createdRaw).getTime() : NaN;
-    const closeMs = closeRaw ? new Date(closeRaw).getTime() : Date.now();
-    let daysLabel = "—";
-    if (Number.isFinite(createdMs) && Number.isFinite(closeMs)) {
-      const d = Math.max(0, Math.round((closeMs - createdMs) / 86400000));
-      daysLabel = `${d}d`;
-    }
-    return { closeDateStr, closer, marginLabel, daysLabel };
-  }, [stageNow, updates, lead, valueNow, expenseNow]);
+    return { closeDateStr };
+  }, [updates, lead]);
 
   const openFollowUpModal = () => {
     setActionError(null);
@@ -555,34 +551,14 @@ export default function LeadDetailPage() {
                 <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Lead Won!</h2>
                 <p className="mt-1.5 text-sm text-emerald-50/95 sm:text-base">
                   Deal closed successfully on {wonBanner.closeDateStr}
-                  {wonBanner.closer ? (
-                    <>
-                      {" "}
-                      · Closed by <span className="font-semibold text-white">{wonBanner.closer}</span>
-                    </>
-                  ) : null}
                 </p>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4 sm:gap-8 lg:shrink-0 lg:gap-10">
-              <div className="text-center sm:text-left">
-                <p className="text-xl font-bold tabular-nums sm:text-2xl">{formatMoney(valueNow)}</p>
-                <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-100/90 sm:text-[11px]">
-                  Final deal value
-                </p>
-              </div>
-              <div className="text-center sm:text-left">
-                <p className="text-xl font-bold tabular-nums sm:text-2xl">{wonBanner.marginLabel}</p>
-                <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-100/90 sm:text-[11px]">
-                  Net margin
-                </p>
-              </div>
-              <div className="text-center sm:text-left">
-                <p className="text-xl font-bold tabular-nums sm:text-2xl">{wonBanner.daysLabel}</p>
-                <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-100/90 sm:text-[11px]">
-                  Days to close
-                </p>
-              </div>
+            <div className="text-center sm:text-left lg:shrink-0">
+              <p className="text-xl font-bold tabular-nums sm:text-2xl">{formatMoney(valueNow)}</p>
+              <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-100/90 sm:text-[11px]">
+                Final deal value
+              </p>
             </div>
           </div>
         </section>
@@ -890,27 +866,20 @@ export default function LeadDetailPage() {
           </div>
           <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50/75 via-white to-fuchsia-50/60 p-6 sm:p-7">
             <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-slate-500">Current story</h3>
-            <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-slate-700 sm:text-base">
-              {textWithBreaks(lead.current_status_summary || latest?.discussion_summary || "No summary yet.")}
-            </p>
-            {lead.risk_blockers || lead.dependencies ? (
-              <div className="mt-4 space-y-2 border-t border-slate-200 pt-4 text-xs">
-                {lead.risk_blockers ? (
-                  <p>
-                    <span className="font-semibold text-rose-800">Risks / blockers</span>
-                    <br />
-                    {lead.risk_blockers}
-                  </p>
-                ) : null}
-                {lead.dependencies ? (
-                  <p>
-                    <span className="font-semibold text-slate-800">Dependencies</span>
-                    <br />
-                    {lead.dependencies}
-                  </p>
-                ) : null}
+            <div className="mt-4 space-y-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Industry</p>
+                <p className="mt-1 break-words text-sm leading-relaxed text-slate-700 sm:text-base">
+                  {formatIndustryDisplay(lead.industry) || "—"}
+                </p>
               </div>
-            ) : null}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current status summary</p>
+                <p className="mt-1 whitespace-pre-line break-words text-sm leading-relaxed text-slate-700 sm:text-base">
+                  {textWithBreaks(lead.current_status_summary || latest?.discussion_summary || "No summary yet.")}
+                </p>
+              </div>
+            </div>
           </div>
         </aside>
       </div>
