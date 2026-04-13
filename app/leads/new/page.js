@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { postApi, putApi, readProfile } from "@/api";
+import { getApi, postApi, putApi, readProfile } from "@/api";
 import { parseIndianRupeeInput } from "@/lib/parseIndianRupee";
 import { useAuthStore } from "@/zustand/auth";
 import { useLeadFormStore, rowToInitialLead } from "@/zustand/leadForm";
@@ -58,10 +58,6 @@ const STEP_DEFINITIONS = [
   { id: 3, title: "Requirements & plan" },
   { id: 4, title: "Commercials" },
 ];
-
-const LEAD_FOLDERS_URL =
-  process.env.NEXT_PUBLIC_LEAD_FOLDERS_URL ||
-  "https://glazergamesprivatelimited-my.sharepoint.com/my?id=%2Fpersonal%2Fkalpesh%5Fmahale%5Fglazer%5Fgames%2FDocuments%2FLead%20Folders&viewid=b4bed52c%2Dc1ee%2D4b86%2Db094%2D6987fb514d1a";
 
 const INITIAL_LEAD = {
   brand: "",
@@ -257,6 +253,24 @@ function addFilesAtPath(node, pathIds, files) {
   };
 }
 
+function extractLeadIdFromCreateResponse(response) {
+  if (!response) return null;
+  const candidates = [
+    response?.data?.id,
+    response?.data?.lead_id,
+    response?.id,
+    response?.lead_id,
+    Array.isArray(response?.data) ? response.data[0]?.id : null,
+    Array.isArray(response?.data) ? response.data[0]?.lead_id : null,
+  ];
+  for (const candidate of candidates) {
+    if (candidate !== undefined && candidate !== null && String(candidate).trim() !== "") {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 export default function NewLeadPage() {
   const router = useRouter();
   const {
@@ -276,6 +290,7 @@ export default function NewLeadPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [lastSyncedFolderName, setLastSyncedFolderName] = useState("");
   const [workspaceTree, setWorkspaceTree] = useState(() => createDefaultWorkspace(""));
   const [activeFolderPath, setActiveFolderPath] = useState([]);
   const [showWorkspace, setShowWorkspace] = useState(false);
@@ -295,6 +310,7 @@ export default function NewLeadPage() {
     setLead(withNormalizedContacts(rowToInitialLead(selectedLead)));
     const savedStep = Number(selectedLead.nextstep ?? selectedLead.nextStepNumber ?? 1);
     setCurrentStep(Math.min(STEP_DEFINITIONS.length, Math.max(1, savedStep || 1)));
+    setLastSyncedFolderName(selectedLead?.brand || selectedLead?.activity || "");
   }, [selectedLead]);
 
   useEffect(() => {
@@ -307,6 +323,7 @@ export default function NewLeadPage() {
     }
     setLead(withNormalizedContacts(INITIAL_LEAD));
     setCurrentStep(1);
+    setLastSyncedFolderName("");
   }, [selectedLead, leadFlowState]);
 
   useEffect(() => {
@@ -565,26 +582,33 @@ export default function NewLeadPage() {
     };
   };
 
-  const buildStepOneUpdatePayload = () => ({
-    brand: lead.brand || "",
-    account_type: "New",
-    activity: lead.activityName || "",
-    mode: lead.mode || "",
-    activity_type: lead.activityType || "",
-    city_region: lead.cityRegion || "",
-    lead_source: lead.leadSource || "",
-    primary_channel: lead.primaryChannel || "",
-    lead_owner: lead.leadOwner || "",
-    stage: lead.currentStatus || "New",
-    current_status: lead.currentStatus || "New",
-    next_step: lead.nextStep || "",
-    next_follow_up_date: lead.nextFollowUpDate || "",
-    priority: lead.priority || "",
-    proposal_shared_date: lead.proposalSharedDate || "",
-    proporsal_shared_date: lead.proposalSharedDate || "",
-    proposal_link: lead.proposalLink || "",
-    nextstep: 1,
-  });
+  const buildStepOneUpdatePayload = () => {
+    const payload = {
+      brand: lead.brand || "",
+      account_type: "New",
+      activity: lead.activityName || "",
+      mode: lead.mode || "",
+      activity_type: lead.activityType || "",
+      city_region: lead.cityRegion || "",
+      lead_source: lead.leadSource || "",
+      primary_channel: lead.primaryChannel || "",
+      lead_owner: lead.leadOwner || "",
+      stage: lead.currentStatus || "New",
+      current_status: lead.currentStatus || "New",
+      next_step: lead.nextStep || "",
+      next_follow_up_date: lead.nextFollowUpDate || "",
+      priority: lead.priority || "",
+      proposal_link: lead.proposalLink || "",
+      nextstep: 1,
+    };
+
+    if (String(lead.proposalSharedDate || "").trim()) {
+      payload.proposal_shared_date = lead.proposalSharedDate;
+      payload.proporsal_shared_date = lead.proposalSharedDate;
+    }
+
+    return payload;
+  };
 
   const buildUpdatePayloadByStep = (stepNumber) => {
     if (stepNumber === 1) return buildStepOneUpdatePayload();
@@ -643,6 +667,22 @@ export default function NewLeadPage() {
           `lead-tracking/${selectedLead.id}`,
           buildUpdatePayloadByStep(currentStep)
         );
+        if (currentStep === 1 && lead.activityName?.trim()) {
+          const targetFolderName = lead.brand || lead.activityName;
+          const renameResponse = await fetch(`/api/leads/${selectedLead.id}/sync-folder`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "rename",
+              leadName: targetFolderName,
+              previousLeadName:
+                lastSyncedFolderName || selectedLead?.brand || selectedLead?.activity || "",
+            }),
+          });
+          if (renameResponse.ok) {
+            setLastSyncedFolderName(targetFolderName);
+          }
+        }
         const nextStep = Math.min(STEP_DEFINITIONS.length, currentStep + 1);
         setLeadFlowState({ lastResponse: response, draft: lead, nextstep: nextStep });
         if (currentStep < STEP_DEFINITIONS.length) {
@@ -653,6 +693,35 @@ export default function NewLeadPage() {
         }
       } else {
         const response = await postApi("lead-tracking", buildFinalPayload());
+        let createdLeadId = extractLeadIdFromCreateResponse(response);
+        if (!createdLeadId) {
+          try {
+            const latestLeads = await getApi("lead-tracking", { page: 1, limit: 100 });
+            const rows = Array.isArray(latestLeads?.data) ? latestLeads.data : [];
+            const matched = rows.find(
+              (row) =>
+                String(row?.activity || "").trim() === String(lead.activityName || "").trim() &&
+                String(row?.brand || "").trim() === String(lead.brand || "").trim()
+            );
+            createdLeadId = matched?.id || null;
+          } catch {
+            createdLeadId = null;
+          }
+        }
+        if (createdLeadId) {
+          const createdFolderName = lead.brand || lead.activityName || `Lead-${createdLeadId}`;
+          const createResponse = await fetch(`/api/leads/${createdLeadId}/sync-folder`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "create",
+              leadName: createdFolderName,
+            }),
+          });
+          if (createResponse.ok) {
+            setLastSyncedFolderName(createdFolderName);
+          }
+        }
         setLeadFlowState({ lastResponse: response, draft: lead, nextstep: currentStep });
         clearLeadFlowState();
         router.push("/leads");
@@ -700,6 +769,23 @@ export default function NewLeadPage() {
     e.target.value = "";
   };
 
+  const openLeadFolder = async () => {
+    const targetLeadId = selectedLead?.id;
+    if (!targetLeadId) {
+      alert("Save lead first, then open its OneDrive folder.");
+      return;
+    }
+    try {
+      const leadName = encodeURIComponent(lead.brand || selectedLead?.brand || lead.activityName || selectedLead?.activity || "");
+      const res = await fetch(`/api/leads/${targetLeadId}/folder-link?leadName=${leadName}`);
+      const data = await res.json();
+      if (!res.ok || !data?.url) throw new Error(data?.error || "No folder URL found");
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      alert(error?.message || "Could not open OneDrive folder");
+    }
+  };
+
   return (
     <main className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -719,12 +805,7 @@ export default function NewLeadPage() {
         <button
           type="button"
           onClick={() => {
-            // setShowWorkspace(true);
-            window.open(
-              LEAD_FOLDERS_URL,
-              "_blank",
-              "noopener,noreferrer"
-            );
+            openLeadFolder();
           }}
           className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
         >

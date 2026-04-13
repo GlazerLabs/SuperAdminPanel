@@ -33,10 +33,6 @@ const OUTCOME_OPTIONS = [
   "Other",
 ];
 
-const LEAD_FOLDERS_URL =
-  process.env.NEXT_PUBLIC_LEAD_FOLDERS_URL ||
-  "https://glazergamesprivatelimited-my.sharepoint.com/my?id=%2Fpersonal%2Fkalpesh%5Fmahale%5Fglazer%5Fgames%2FDocuments%2FLead%20Folders&viewid=b4bed52c%2Dc1ee%2D4b86%2Db094%2D6987fb514d1a";
-
 const STATUS_PILL_CLASS = {
   New: "bg-sky-50 text-sky-800 ring-sky-100",
   Contacted: "bg-violet-50 text-violet-800 ring-violet-100",
@@ -72,6 +68,13 @@ function formatMoney(n) {
   if (absNum >= 100000) return `₹${formatUnit(100000, "L")}`;
   if (absNum >= 1000) return `₹${formatUnit(1000, "K")}`;
   return `₹${Math.round(num)}`;
+}
+
+function getExpenseColorClass(expenseAmount) {
+  const amount = Number(expenseAmount || 0);
+  if (amount > 100000) return "text-rose-300 hover:text-rose-200";
+  if (amount >= 80000) return "text-amber-300 hover:text-amber-200";
+  return "text-emerald-300 hover:text-emerald-200";
 }
 
 function textWithBreaks(v) {
@@ -275,9 +278,13 @@ export default function LeadDetailPage() {
   const [showEditRecord, setShowEditRecord] = useState(false);
   const [savingFollowUp, setSavingFollowUp] = useState(false);
   const [savingRecord, setSavingRecord] = useState(false);
-  const [showExpenseLinkModal, setShowExpenseLinkModal] = useState(false);
-  const [expenseLinkInput, setExpenseLinkInput] = useState("");
-  const [savingExpenseLink, setSavingExpenseLink] = useState(false);
+  const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+  const [expenseAmountInput, setExpenseAmountInput] = useState("");
+  const [expensePaidForInput, setExpensePaidForInput] = useState("");
+  const [expensePaidToInput, setExpensePaidToInput] = useState("");
+  const [expenseDescriptionInput, setExpenseDescriptionInput] = useState("");
+  const [expenseFile, setExpenseFile] = useState(null);
+  const [savingExpenseEntry, setSavingExpenseEntry] = useState(false);
 
   const [overviewForm, setOverviewForm] = useState(emptyOverviewForm);
 
@@ -350,35 +357,77 @@ export default function LeadDetailPage() {
   })();
   const valueNow = Number(previousUpdate?.value_after ?? lead?.expected_revenue ?? 0) || 0;
   const expenseNow = Number(previousUpdate?.expense_after ?? lead?.expected_expenses ?? 0) || 0;
+  const expenseColorClass = useMemo(() => getExpenseColorClass(expenseNow), [expenseNow]);
+  const totalExpense = useMemo(
+    () =>
+      updates.reduce((sum, item) => {
+        const before = Number(item?.expense_before ?? 0) || 0;
+        const after = Number(item?.expense_after ?? before) || 0;
+        const delta = after - before;
+        return delta > 0 ? sum + delta : sum;
+      }, 0),
+    [updates]
+  );
 
   const expenseExcelLink = useMemo(() => pickExpenseExcelLink(lead), [lead]);
 
   const recordSummaryContacts = useMemo(() => contactsFromParallelLead(lead), [lead]);
 
-  const saveExpenseExcelLink = async (expanceExcelLinks) => {
+  const openAddExpenseModal = () => {
+    setExpenseAmountInput("");
+    setExpensePaidForInput("");
+    setExpensePaidToInput("");
+    setExpenseDescriptionInput("");
+    setExpenseFile(null);
+    setActionError(null);
+    setShowAddExpenseModal(true);
+  };
+
+  const saveExpenseEntry = async () => {
     if (!lead?.id) return;
-    setSavingExpenseLink(true);
+    const parsedAmount = parseIndianRupeeInput(expenseAmountInput);
+    if (parsedAmount === null || parsedAmount <= 0) {
+      setActionError("Enter a valid expense amount.");
+      return;
+    }
+    if (!expenseFile) {
+      setActionError("Upload a file (excel, pdf, image, etc.) for invoice folder.");
+      return;
+    }
+
+    setSavingExpenseEntry(true);
     setActionError(null);
     setActionOk(null);
     try {
-      const value = expanceExcelLinks === undefined || expanceExcelLinks === null ? "" : String(expanceExcelLinks).trim();
-      await putApi(`lead-tracking/${lead.id}`, {
-        expance_excel_links: value === "" ? "" : value,
+      const form = new FormData();
+      form.append("file", expenseFile);
+      form.append("subfolder", "invoice");
+      form.append("leadName", lead.brand || lead.activity || `Lead-${lead.id}`);
+      const uploadRes = await fetch(`/api/leads/${lead.id}/upload`, {
+        method: "POST",
+        body: form,
       });
-      setActionOk(value ? "Expense link saved." : "Expense link removed.");
-      setShowExpenseLinkModal(false);
+      const uploadData = await uploadRes.json().catch(() => ({}));
+      if (!uploadRes.ok) {
+        throw new Error(uploadData?.error || "File upload failed.");
+      }
+
+      const updatedExpense = Number(expenseNow || 0) + Number(parsedAmount);
+      await putApi(`lead-tracking/${lead.id}`, {
+        expected_expenses: updatedExpense,
+        paid_for: String(expensePaidForInput || "").trim(),
+        paid_to: String(expensePaidToInput || "").trim(),
+        expense_description: String(expenseDescriptionInput || "").trim(),
+      });
+
+      setShowAddExpenseModal(false);
+      setActionOk(`Expense added and file uploaded to invoice folder.`);
       await loadLead();
     } catch (err) {
-      setActionError(err?.message || String(err) || "Could not save expense link");
+      setActionError(err?.message || String(err) || "Could not save expense entry.");
     } finally {
-      setSavingExpenseLink(false);
+      setSavingExpenseEntry(false);
     }
-  };
-
-  const openExpenseLinkModal = () => {
-    setExpenseLinkInput(pickExpenseExcelLink(lead));
-    setActionError(null);
-    setShowExpenseLinkModal(true);
   };
 
   const wonBanner = useMemo(() => {
@@ -471,6 +520,17 @@ export default function LeadDetailPage() {
     setActionOk(null);
     try {
       await putApi(`lead-tracking/${lead.id}`, buildPutBody(overviewForm));
+      if (overviewForm.activity?.trim()) {
+        await fetch(`/api/leads/${lead.id}/sync-folder`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "rename",
+            leadName: overviewForm.brand || overviewForm.activity,
+            previousLeadName: lead.brand || lead.activity || "",
+          }),
+        });
+      }
       setActionOk("Lead record updated.");
       setShowEditRecord(false);
       await loadLead();
@@ -494,8 +554,21 @@ export default function LeadDetailPage() {
     router.push("/leads/new");
   };
 
-  const openLeadFolders = () => {
-    window.open(LEAD_FOLDERS_URL, "_blank", "noopener,noreferrer");
+  const openLeadFolders = async () => {
+    if (!lead?.id) return;
+    try {
+      const leadName = encodeURIComponent(lead.brand || lead.activity || `Lead-${lead.id}`);
+      const res = await fetch(`/api/leads/${lead.id}/folder-link?leadName=${leadName}`);
+      const data = await res.json();
+      if (!res.ok || !data?.url) throw new Error(data?.error || "Could not open OneDrive folder.");
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setActionError(err?.message || "Could not open OneDrive folder.");
+    }
+  };
+
+  const handleUploadFolderClick = () => {
+    // Placeholder for upcoming folder-upload flow.
   };
 
   if (loading) {
@@ -647,8 +720,20 @@ export default function LeadDetailPage() {
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/60">Commercial</p>
           <p className="mt-3 text-3xl font-bold tabular-nums">{formatMoney(valueNow)}</p>
           <p className="mt-1 text-sm text-white/75">Expected revenue</p>
-          <p className="mt-4 text-xl font-semibold tabular-nums text-white/90">{formatMoney(expenseNow)}</p>
-          <p className="text-sm text-white/65">Expenses</p>
+          <div className="mt-4 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-white/60">Total expense</p>
+              <p className="text-lg font-semibold tabular-nums text-white/90">{formatMoney(totalExpense)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push(`/leads/${lead.id}/expenses`)}
+              className={`inline-flex items-center gap-2 text-xl font-semibold tabular-nums ${expenseColorClass}`}
+            >
+              <span aria-hidden className="text-base">🔎</span>
+              <span>{formatMoney(expenseNow)}</span>
+            </button>
+          </div>
           <div className="mt-4 border-t border-white/10 pt-4">
             {expenseExcelLink ? (
               <a
@@ -673,11 +758,11 @@ export default function LeadDetailPage() {
             )}
             <button
               type="button"
-              onClick={openExpenseLinkModal}
+              onClick={openAddExpenseModal}
               className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold text-white shadow-sm backdrop-blur-sm transition hover:bg-white/15"
             >
               <span aria-hidden>➕</span>
-              {expenseExcelLink ? "Edit expense link" : "Add expense"}
+              Add expense
             </button>
           </div>
         </div>
@@ -807,6 +892,21 @@ export default function LeadDetailPage() {
 
         {/* Side: context */}
         <aside className="space-y-5 xl:col-span-4">
+          <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/70 via-white to-cyan-50/50 p-6 shadow-sm sm:p-7">
+            <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-slate-500">Lead folder</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Upload directly into OneDrive subfolders for this lead.
+            </p>
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={handleUploadFolderClick}
+                className="inline-flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Upload Folder
+              </button>
+            </div>
+          </div>
           <div className="rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50/65 via-white to-indigo-50/55 p-6 shadow-sm sm:p-7">
             <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-slate-500">Record summary</h3>
             <dl className="mt-4 space-y-3 text-sm sm:text-base">
@@ -1405,27 +1505,28 @@ export default function LeadDetailPage() {
         </div>
       )}
 
-      {showExpenseLinkModal && (
+      {showAddExpenseModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
           <div
             role="dialog"
             aria-modal="true"
-            aria-labelledby="expense-link-title"
+            aria-labelledby="add-expense-title"
             className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-200"
           >
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h2 id="expense-link-title" className="text-lg font-bold text-slate-900">
-                  Expense link
+                <h2 id="add-expense-title" className="text-lg font-bold text-slate-900">
+                  Add expense
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Paste a URL to your expense sheet or Excel file (SharePoint, Drive, etc.). It opens in a new tab from
-                  the Commercial card.
+                  Add paid amount and upload supporting file. File will be uploaded to the
+                  <span className="font-semibold text-slate-700"> invoice </span>
+                  folder in OneDrive.
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setShowExpenseLinkModal(false)}
+                onClick={() => setShowAddExpenseModal(false)}
                 className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                 aria-label="Close"
               >
@@ -1433,39 +1534,75 @@ export default function LeadDetailPage() {
               </button>
             </div>
             <label className="mt-4 block text-sm">
-              <span className="font-medium text-slate-700">Expense link</span>
+              <span className="font-medium text-slate-700">Paid amount</span>
               <input
-                type="url"
-                value={expenseLinkInput}
-                onChange={(e) => setExpenseLinkInput(e.target.value)}
-                placeholder="https://…"
+                type="text"
+                inputMode="decimal"
+                value={expenseAmountInput}
+                onChange={(e) => setExpenseAmountInput(e.target.value)}
+                onBlur={() => {
+                  const parsed = parseIndianRupeeInput(expenseAmountInput);
+                  if (parsed !== null) setExpenseAmountInput(String(parsed));
+                }}
+                placeholder="E.g. 12000, 1.2l, 50k"
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="mt-4 block text-sm">
+              <span className="font-medium text-slate-700">Invoice file</span>
+              <input
+                type="file"
+                onChange={(e) => setExpenseFile(e.target.files?.[0] || null)}
+                className="mt-1 block w-full text-xs text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+              />
+              <p className="mt-1 text-xs text-slate-500">Allowed: excel, pdf, image, or any document.</p>
+            </label>
+            <label className="mt-4 block text-sm">
+              <span className="font-medium text-slate-700">Paid For</span>
+              <input
+                type="text"
+                value={expensePaidForInput}
+                onChange={(e) => setExpensePaidForInput(e.target.value)}
+                placeholder="What was this expense for?"
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="mt-4 block text-sm">
+              <span className="font-medium text-slate-700">Paid To</span>
+              <input
+                type="text"
+                value={expensePaidToInput}
+                onChange={(e) => setExpensePaidToInput(e.target.value)}
+                placeholder="Vendor or person name"
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="mt-4 block text-sm">
+              <span className="font-medium text-slate-700">Description</span>
+              <textarea
+                rows={2}
+                value={expenseDescriptionInput}
+                onChange={(e) => setExpenseDescriptionInput(e.target.value)}
+                placeholder="Extra notes about this expense"
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
               />
             </label>
             <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-4">
-              <button
-                type="button"
-                disabled={savingExpenseLink || !expenseExcelLink}
-                onClick={() => saveExpenseExcelLink("")}
-                className="rounded-xl px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Remove link
-              </button>
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowExpenseLinkModal(false)}
+                  onClick={() => setShowAddExpenseModal(false)}
                   className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  disabled={savingExpenseLink}
-                  onClick={() => saveExpenseExcelLink(expenseLinkInput)}
+                  disabled={savingExpenseEntry}
+                  onClick={saveExpenseEntry}
                   className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
                 >
-                  {savingExpenseLink ? "Saving…" : "Save"}
+                  {savingExpenseEntry ? "Saving…" : "Save expense"}
                 </button>
               </div>
             </div>
