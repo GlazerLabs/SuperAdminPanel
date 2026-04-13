@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import Image from "next/image";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { normalizeMemberAvatarSrc } from "@/lib/memberAvatar";
 
 const ENTRIES_OPTIONS = [10, 20, 50, 100];
 
@@ -19,10 +20,17 @@ function SortIcon() {
 }
 
 function Avatar({ src, name }) {
+  const safeSrc = normalizeMemberAvatarSrc(src);
+
   return (
     <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-200">
-      {src ? (
-        <Image src={src} alt={name} fill sizes="36px" className="object-cover" />
+      {safeSrc ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={safeSrc}
+          alt={name ?? ""}
+          className="h-full w-full object-cover"
+        />
       ) : (
         <span className="flex h-full w-full items-center justify-center text-sm font-medium text-slate-600">
           {name?.charAt(0) ?? "?"}
@@ -37,17 +45,87 @@ export default function MembersTable({
   title = "Members",
   onEdit,
   onDelete,
+  /** When set, pagination uses server totals and `data` is one page of rows */
+  remoteTotal = null,
+  page: serverPage,
+  onPageChange,
+  showSearch = false,
+  onSearchChange,
+  tableLoading = false,
+  pageSize,
+  onPageSizeChange,
 }) {
-  const [entriesPerPage, setEntriesPerPage] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [internalEntries, setInternalEntries] = useState(10);
+  const entriesPerPage =
+    pageSize !== undefined && pageSize !== null ? Number(pageSize) : internalEntries;
+  const [internalPage, setInternalPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [searchInput, setSearchInput] = useState("");
+  const debounceRef = useRef(null);
+  const router = useRouter();
 
-  const totalPages = Math.max(1, Math.ceil(data.length / entriesPerPage));
+  const isServer = remoteTotal != null && Number.isFinite(Number(remoteTotal));
+  const totalItems = isServer ? Number(remoteTotal) : data.length;
+  const currentPage = isServer ? Math.max(1, serverPage ?? 1) : internalPage;
+  const setCurrentPage = (updater) => {
+    const next =
+      typeof updater === "function" ? updater(currentPage) : updater;
+    const p = Math.max(1, next);
+    if (isServer) onPageChange?.(p);
+    else setInternalPage(p);
+  };
+
+  const totalPagesResolved =
+    totalItems > 0 ? Math.ceil(totalItems / entriesPerPage) : null;
   const start = (currentPage - 1) * entriesPerPage;
   const pageData = useMemo(
-    () => data.slice(start, start + entriesPerPage),
-    [data, start, entriesPerPage]
+    () => (isServer ? data : data.slice(start, start + entriesPerPage)),
+    [data, start, entriesPerPage, isServer]
   );
+
+  const canGoNext =
+    totalItems > 0
+      ? currentPage * entriesPerPage < totalItems
+      : pageData.length === entriesPerPage;
+
+  const visiblePages = useMemo(() => {
+    const windowSize = 7;
+
+    if (totalPagesResolved) {
+      let startPage = Math.max(1, currentPage - Math.floor(windowSize / 2));
+      let endPage = Math.min(totalPagesResolved, startPage + windowSize - 1);
+      startPage = Math.max(1, endPage - windowSize + 1);
+
+      return Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+    }
+
+    let startPage = Math.max(1, currentPage - 3);
+    let endPage = startPage + windowSize - 1;
+
+    if (!canGoNext) {
+      endPage = currentPage;
+      startPage = Math.max(1, endPage - windowSize + 1);
+    }
+
+    if (currentPage < startPage) startPage = currentPage;
+    if (currentPage > endPage) endPage = currentPage;
+
+    return Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+  }, [totalPagesResolved, currentPage, canGoNext]);
+
+  const startIndex = pageData.length === 0 ? 0 : start + 1;
+  const endIndex = start + pageData.length;
+
+  useEffect(() => {
+    if (!showSearch || typeof onSearchChange !== "function") return undefined;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      onSearchChange(searchInput.trim());
+    }, 400);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchInput, showSearch, onSearchChange]);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === pageData.length) {
@@ -70,24 +148,46 @@ export default function MembersTable({
     <div className="table-fade-in rounded-2xl bg-white shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 overflow-hidden">
       {/* Top: entries selector */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 bg-slate-50/80 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-slate-600">Show</span>
-          <select
-            value={entriesPerPage}
-            onChange={(e) => {
-              setEntriesPerPage(Number(e.target.value));
-              setCurrentPage(1);
-            }}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm"
-          >
-            {ENTRIES_OPTIONS.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-          <span className="text-sm text-slate-600">entries</span>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-600">Show</span>
+            <select
+              value={entriesPerPage}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (onPageSizeChange) onPageSizeChange(n);
+                else setInternalEntries(n);
+                setCurrentPage(1);
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm"
+            >
+              {ENTRIES_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            <span className="text-sm text-slate-600">entries</span>
+          </div>
+          {showSearch && (
+            <div className="flex min-w-[200px] flex-1 items-center gap-2 sm:max-w-xs">
+              <label htmlFor="members-search" className="sr-only">
+                Search
+              </label>
+              <input
+                id="members-search"
+                type="search"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search…"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+          )}
         </div>
+        {tableLoading && (
+          <span className="text-sm font-medium text-indigo-600">Loading…</span>
+        )}
       </div>
 
       <div className="overflow-x-auto">
@@ -152,6 +252,22 @@ export default function MembersTable({
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
+                      onClick={() =>
+                        router.push(
+                          `/members/${encodeURIComponent(String(row.id))}/access?name=${encodeURIComponent(row.name ?? "")}`
+                        )
+                      }
+                      className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                      aria-label="Module access"
+                      title="Module access"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                        <path d="M9 12l2 2 4-4" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => onEdit?.(row)}
                       className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
                       aria-label="Edit"
@@ -181,32 +297,40 @@ export default function MembersTable({
         </table>
       </div>
 
-      {data.length === 0 && (
+      {totalItems === 0 && !tableLoading && (
         <div className="px-4 py-12 text-center text-sm text-slate-500">
           No entries to show.
         </div>
       )}
 
-      {/* Pagination */}
+      {/* Pagination (aligned with app/tracking/page.js) */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-200 bg-slate-50/80 px-4 py-3">
         <p className="text-sm text-slate-600">
-          Showing {data.length === 0 ? 0 : start + 1} to{" "}
-          {Math.min(start + entriesPerPage, data.length)} of {data.length} entries
+          {totalItems > 0 ? (
+            <>
+              Showing {startIndex} to {endIndex} of {totalItems} entries
+            </>
+          ) : (
+            <>
+              Showing {startIndex} to {endIndex}
+            </>
+          )}
         </p>
         <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+            disabled={currentPage === 1 || tableLoading}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Previous
           </button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+          {visiblePages.map((p) => (
             <button
               key={p}
               type="button"
               onClick={() => setCurrentPage(p)}
+              disabled={tableLoading}
               className={`min-w-9 rounded-lg border px-3 py-1.5 text-sm font-medium ${
                 p === currentPage
                   ? "border-indigo-600 bg-indigo-600 text-white"
@@ -218,9 +342,13 @@ export default function MembersTable({
           ))}
           <button
             type="button"
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+            onClick={() => setCurrentPage((p) => p + 1)}
+            disabled={
+              !canGoNext ||
+              tableLoading ||
+              (totalPagesResolved ? currentPage >= totalPagesResolved : false)
+            }
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Next
           </button>

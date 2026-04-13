@@ -103,10 +103,15 @@ export default function MembersStatsCards({
   lastWeek = 0,
   lastMonth = 0,
   label = "Users", // "Users" | "Organizers" | "Teams"
+  totalDeltaPercent,
 }) {
   const safeTotal = Math.max(1, Number(total) || 0);
   const weekDelta = (Number(lastWeek) / safeTotal) * 100;
   const monthDelta = (Number(lastMonth) / safeTotal) * 100;
+  const totalDelta =
+    totalDeltaPercent !== undefined && totalDeltaPercent !== null
+      ? Number(totalDeltaPercent)
+      : 12;
 
   return (
     <section className="mb-6 grid gap-4 sm:grid-cols-3">
@@ -114,7 +119,7 @@ export default function MembersStatsCards({
         <StatCard
           title={`Total ${label}`}
           value={total}
-          deltaPercent={12}
+          deltaPercent={totalDelta}
           accent="indigo"
           icon="users"
         />

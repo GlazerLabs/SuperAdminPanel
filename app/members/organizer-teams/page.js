@@ -5,78 +5,96 @@ import MembersTable from "@/components/Members/MembersTable";
 import MembersStatsCards from "@/components/Members/MembersStatsCards";
 import AddEditMemberModal from "@/components/Members/AddEditMemberModal";
 import DeleteConfirmModal from "@/components/Members/DeleteConfirmModal";
-import { mockTeams } from "@/data/membersMockData";
-import { fetchUserTypeCounts } from "@/api";
+import { useMembersWorkspace } from "@/contexts/MembersWorkspaceContext";
+import { useMembersAnalyticsList } from "@/hooks/useMembersAnalyticsList";
+import {
+  createOrganizerTeamMember,
+  deleteOrganizerTeamMember,
+  updateOrganizerTeamMember,
+} from "@/api";
+
+function getErrorMessage(err) {
+  if (!err) return "Something went wrong.";
+  if (typeof err === "string") return err;
+  if (err?.message && typeof err.message === "string") return err.message;
+  if (err?.error && typeof err.error === "string") return err.error;
+  return "Request failed.";
+}
+
+const ANALYTICS_ROLE = "organizer_team";
+const CREATE_TYPE = 4;
 
 export default function MembersOrganizerTeamsPage() {
-  const [data, setData] = useState(mockTeams);
+  const { registerAddSubmit } = useMembersWorkspace();
+  const {
+    data,
+    remoteTotal,
+    page,
+    setPage,
+    limit,
+    setLimit,
+    setSearch,
+    stats,
+    statsLoading,
+    tableLoading,
+    bump,
+    totalDeltaPercent,
+  } = useMembersAnalyticsList({
+    analyticsRoleSlug: ANALYTICS_ROLE,
+  });
+
   const [editRow, setEditRow] = useState(null);
   const [deleteRow, setDeleteRow] = useState(null);
 
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    total: 0,
-    lastWeek: 0,
-    lastMonth: 0,
-  });
-
   useEffect(() => {
-    let isMounted = true;
+    return registerAddSubmit(async (values) => {
+      await createOrganizerTeamMember({
+        username: values.username,
+        email: values.email,
+        mobile: values.mobile,
+        full_name: values.name,
+        type: CREATE_TYPE,
+        profile_pic_url: values.profilePicUrl,
+        password: values.password,
+      });
+      setPage(1);
+      bump();
+    });
+  }, [registerAddSubmit, bump, setPage]);
 
-    const loadCounts = async () => {
-      try {
-        const response = await fetchUserTypeCounts("organizer_team");
-        const list = Array.isArray(response?.data) ? response.data : [];
-        const item = list[0] || {};
-
-        const total = Number(item.organizer_team ?? item.total ?? mockTeams.length) || 0;
-
-        if (isMounted) {
-          setStats({
-            total,
-            lastWeek: 0,
-            lastMonth: 0,
-          });
-        }
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error("Failed to load organizer team counts:", error);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    loadCounts();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const handleEdit = (row) => setEditRow(row);
-  const handleDelete = (row) => setDeleteRow(row);
-
-  const handleEditSubmit = (values) => {
+  const handleEditSubmit = async (values) => {
     if (!editRow) return;
-    setData((prev) =>
-      prev.map((r) =>
-        r.id === editRow.id
-          ? { ...r, name: values.name, email: values.email }
-          : r
-      )
-    );
+    const id = Number(editRow.id);
+    if (!Number.isFinite(id)) throw new Error("Invalid member id.");
+    await updateOrganizerTeamMember({
+      id,
+      username: values.username,
+      email: values.email,
+      full_name: values.name,
+      profile_pic_url: values.profilePicUrl || undefined,
+    });
     setEditRow(null);
+    bump();
   };
 
   const handleDeleteConfirm = () => {
     if (!deleteRow) return;
-    setData((prev) => prev.filter((r) => r.id !== deleteRow.id));
-    setDeleteRow(null);
+    void (async () => {
+      try {
+        const id = Number(deleteRow.id);
+        if (!Number.isFinite(id)) throw new Error("Invalid member id.");
+        await deleteOrganizerTeamMember({ id });
+        setDeleteRow(null);
+        bump();
+      } catch (err) {
+        window.alert(getErrorMessage(err));
+      }
+    })();
   };
 
   return (
     <>
-      {loading ? (
+      {statsLoading ? (
         <section className="mb-6 grid gap-4 sm:grid-cols-3">
           <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
           <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
@@ -88,19 +106,42 @@ export default function MembersOrganizerTeamsPage() {
           lastWeek={stats.lastWeek}
           lastMonth={stats.lastMonth}
           label="Organizer Teams"
+          totalDeltaPercent={totalDeltaPercent}
         />
       )}
       <MembersTable
         data={data}
         title="Organizer Teams"
-        onEdit={handleEdit}
-        onDelete={handleDelete}
+        onEdit={setEditRow}
+        onDelete={setDeleteRow}
+        remoteTotal={remoteTotal}
+        page={page}
+        onPageChange={setPage}
+        pageSize={limit}
+        onPageSizeChange={setLimit}
+        showSearch
+        onSearchChange={(q) => {
+          setSearch(q);
+          setPage(1);
+        }}
+        tableLoading={tableLoading}
       />
 
       <AddEditMemberModal
         open={Boolean(editRow)}
         title="Edit Organizer Team"
-        initialValues={editRow ? { name: editRow.name, email: editRow.email } : null}
+        variant="organizer"
+        initialValues={
+          editRow
+            ? {
+                name: editRow.name,
+                email: editRow.email,
+                username: editRow.username,
+                mobile: editRow.contact,
+                profilePicUrl: editRow.avatar ?? "",
+              }
+            : null
+        }
         onClose={() => setEditRow(null)}
         onSubmit={handleEditSubmit}
       />

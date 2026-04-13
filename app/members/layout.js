@@ -4,45 +4,54 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import AddEditMemberModal from "@/components/Members/AddEditMemberModal";
-
-// Matches UserRoleType: ADMIN=1, PLAYER=2, ORGANIZER=3, ORGANIZER_TEAM=4, FREELANCER=5, SUPER_ADMIN=6
-const TABS = [
-  { label: "User", href: "/members/users" },
-  { label: "Admin", href: "/members/admin" },
-  { label: "Organizer", href: "/members/organizers" },
-  { label: "Organizer Teams", href: "/members/organizer-teams" },
-  { label: "Freelancer", href: "/members/freelancers" },
-  { label: "Super Admin", href: "/members/super-admin" },
-];
+import {
+  MembersWorkspaceProvider,
+  useMembersWorkspace,
+} from "@/contexts/MembersWorkspaceContext";
+import { MembersTabsProvider, useMembersTabs } from "@/contexts/MembersTabsContext";
+import { getMembersPathCreateType } from "@/lib/membersRoleAnalytics";
 
 function getAddTitle(pathname) {
   if (pathname?.includes("/admin")) return "Add Admin";
-  if (pathname?.includes("/organizers") && !pathname?.includes("organizer-teams")) return "Add Organizer";
+  if (pathname?.includes("/organizers") && !pathname?.includes("organizer-teams"))
+    return "Add Organizer";
   if (pathname?.includes("/organizer-teams")) return "Add Organizer Team";
   if (pathname?.includes("/freelancers")) return "Add Freelancer";
   if (pathname?.includes("/super-admin")) return "Add Super Admin";
+  if (pathname?.match(/^\/members\/role\/[^/]+$/)) return "Add member";
   return "Add User";
 }
 
-export default function MembersLayout({ children }) {
+function getAddVariant(pathname) {
+  if (pathname?.includes("/organizer-teams")) return "organizer";
+  if (pathname?.includes("/organizers")) return "organizer";
+  if (pathname?.match(/^\/members\/role\/[^/]+$/)) return "organizer";
+  return "default";
+}
+
+function isMembersTabActive(pathname, tab) {
+  if (!pathname || !tab?.href) return false;
+  if (pathname === tab.href) return true;
+  // `/members` shows the same list as the Player / "User" analytics tab
+  if (pathname === "/members" && tab.analyticsSlug === "player") return true;
+  return false;
+}
+
+function MembersLayoutInner({ children }) {
   const pathname = usePathname();
   const [addModalOpen, setAddModalOpen] = useState(false);
-
-  const handleAddSubmit = (values) => {
-    console.log("Add member", values);
-    setAddModalOpen(false);
-  };
+  const { submitAdd } = useMembersWorkspace();
+  const { tabs } = useMembersTabs();
 
   return (
     <div className="space-y-6">
-      {/* Tabs row: segment control + Add button */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-          {TABS.map((tab) => {
-            const active = pathname === tab.href;
+          {tabs.map((tab) => {
+            const active = isMembersTabActive(pathname, tab);
             return (
               <Link
-                key={tab.href}
+                key={`${tab.roleCode}-${tab.href}`}
                 href={tab.href}
                 className={`rounded-lg px-5 py-2.5 text-sm font-medium transition-colors ${
                   active
@@ -73,9 +82,28 @@ export default function MembersLayout({ children }) {
       <AddEditMemberModal
         open={addModalOpen}
         title={getAddTitle(pathname)}
+        variant={getAddVariant(pathname)}
         onClose={() => setAddModalOpen(false)}
-        onSubmit={handleAddSubmit}
+        onSubmit={(values) =>
+          submitAdd(values, { type: getMembersPathCreateType(pathname) })
+        }
       />
     </div>
+  );
+}
+
+function MembersLayoutShell({ children }) {
+  return (
+    <MembersTabsProvider>
+      <MembersLayoutInner>{children}</MembersLayoutInner>
+    </MembersTabsProvider>
+  );
+}
+
+export default function MembersLayout({ children }) {
+  return (
+    <MembersWorkspaceProvider>
+      <MembersLayoutShell>{children}</MembersLayoutShell>
+    </MembersWorkspaceProvider>
   );
 }

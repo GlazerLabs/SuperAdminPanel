@@ -9,8 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@azure/identity": "^4.13.1",
     "@google-analytics/data": "^5.2.1",
     "@google-cloud/bigquery": "^8.1.1",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
     "axios": "^1.13.6",
     "next": "16.1.6",
     "react": "19.2.3",
