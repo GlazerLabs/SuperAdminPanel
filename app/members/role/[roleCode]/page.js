@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 import MembersTable from "@/components/Members/MembersTable";
 import MembersStatsCards from "@/components/Members/MembersStatsCards";
 import AddEditMemberModal from "@/components/Members/AddEditMemberModal";
 import DeleteConfirmModal from "@/components/Members/DeleteConfirmModal";
+import { useMembersTabs } from "@/contexts/MembersTabsContext";
 import { useMembersAnalyticsList } from "@/hooks/useMembersAnalyticsList";
+import { displayLabelForRole } from "@/lib/membersRoleAnalytics";
 
-const ANALYTICS_ROLE = "player";
-
-export default function MembersUsersPage() {
+function MembersDynamicRoleInner({ analyticsSlug, label }) {
   const {
     data: apiData,
     remoteTotal,
@@ -23,7 +24,7 @@ export default function MembersUsersPage() {
     tableLoading,
     totalDeltaPercent,
   } = useMembersAnalyticsList({
-    analyticsRoleSlug: ANALYTICS_ROLE,
+    analyticsRoleSlug: analyticsSlug,
   });
 
   const [rows, setRows] = useState([]);
@@ -63,13 +64,13 @@ export default function MembersUsersPage() {
           total={stats.total}
           lastWeek={stats.lastWeek}
           lastMonth={stats.lastMonth}
-          label="Users"
+          label={label}
           totalDeltaPercent={totalDeltaPercent}
         />
       )}
       <MembersTable
         data={rows}
-        title="User (App)"
+        title={label}
         onEdit={setEditRow}
         onDelete={setDeleteRow}
         remoteTotal={remoteTotal}
@@ -87,7 +88,7 @@ export default function MembersUsersPage() {
 
       <AddEditMemberModal
         open={Boolean(editRow)}
-        title="Edit User"
+        title={`Edit ${label}`}
         initialValues={editRow ? { name: editRow.name, email: editRow.email } : null}
         onClose={() => setEditRow(null)}
         onSubmit={handleEditSubmit}
@@ -101,4 +102,49 @@ export default function MembersUsersPage() {
       />
     </>
   );
+}
+
+export default function MembersDynamicRolePage() {
+  const params = useParams();
+  const roleCode = params?.roleCode;
+  const { getAnalyticsSlugForRoleCode, rolesList, rolesLoaded } = useMembersTabs();
+
+  const slug = useMemo(
+    () => (roleCode != null ? getAnalyticsSlugForRoleCode(roleCode) : null),
+    [roleCode, getAnalyticsSlugForRoleCode]
+  );
+
+  const roleMeta = useMemo(
+    () =>
+      rolesList.find(
+        (r) => String(r?.role_code ?? r?.roleCode) === String(roleCode)
+      ) ?? null,
+    [rolesList, roleCode]
+  );
+
+  const label = roleMeta ? displayLabelForRole(roleMeta) : `Role ${roleCode ?? ""}`;
+
+  if (!rolesLoaded) {
+    return (
+      <div className="space-y-6">
+        <section className="mb-6 grid gap-4 sm:grid-cols-3">
+          <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
+          <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
+          <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
+        </section>
+        <div className="h-64 animate-pulse rounded-2xl bg-slate-100" />
+      </div>
+    );
+  }
+
+  if (!slug) {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-900">
+        No role found for code <strong>{String(roleCode)}</strong>. It may have been removed
+        or is inactive.
+      </div>
+    );
+  }
+
+  return <MembersDynamicRoleInner analyticsSlug={slug} label={label} />;
 }
