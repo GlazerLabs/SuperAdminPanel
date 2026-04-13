@@ -41,8 +41,106 @@ function sortUpdates(updates) {
   return [...updates].sort((a, b) => {
     const ca = a?.created_at ? new Date(a.created_at).getTime() : 0;
     const cb = b?.created_at ? new Date(b.created_at).getTime() : 0;
-    return cb - ca;
+    if (ca !== cb) return cb - ca;
+    const da = sliceDate(a.update_date) || "";
+    const db = sliceDate(b.update_date) || "";
+    if (da !== db) return db.localeCompare(da);
+    return Number(b.id || 0) - Number(a.id || 0);
   });
+}
+
+function pickExpensesArray(row) {
+  if (!row) return [];
+  const raw =
+    row.expenses ??
+    row.expense_entries ??
+    row.expense_list ??
+    row.expence_list ??
+    row.lead_expenses ??
+    row.lead_expences;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((x) => x && typeof x === "object");
+}
+
+function sumExpensePayments(row, updatesSorted) {
+  const arr = pickExpensesArray(row);
+  if (arr.length > 0) {
+    return arr.reduce((sum, item) => {
+      const n = Number(item?.payment);
+      return sum + (Number.isFinite(n) ? n : 0);
+    }, 0);
+  }
+  if (!Array.isArray(updatesSorted)) return 0;
+  return updatesSorted.reduce((sum, item) => {
+    const n = Number(item?.payment);
+    return sum + (Number.isFinite(n) ? n : 0);
+  }, 0);
+}
+
+function mapUpdateToPaymentRow(u) {
+  const payment = Number(u?.payment) || 0;
+  return {
+    id: u.id ?? `${sliceDate(u.update_date || u.created_at)}-${payment}-${u.paid_for}`,
+    date: sliceDate(u.update_date || u.created_at),
+    payment,
+    paid_for: u.paid_for || "—",
+    paid_to: u.paid_to || "—",
+    description: u.description || u.expense_description || "",
+    expence_link: u.expence_link || u.links_attachments || "",
+    by: u?.username || u?.full_name || `User ${u?.created_by_id ?? ""}`,
+    update_type: u.update_type || "",
+  };
+}
+
+function mapArrayItemToPaymentRow(item, idx) {
+  const payment = Number(item?.payment) || 0;
+  return {
+    id: item.id ?? `exp-${idx}-${payment}`,
+    date: sliceDate(item.created_at || item.date || item.update_date || ""),
+    payment,
+    paid_for: item.paid_for || "—",
+    paid_to: item.paid_to || "—",
+    description: item.description || item.expense_description || "",
+    expence_link: item.expence_link || item.expense_link || "",
+    by: item.username || item.full_name || "—",
+    update_type: item.update_type || "",
+  };
+}
+
+/** Card + amount styling vs forecast (same thresholds as lead detail). */
+function ledgerSpendPresentation(spent, forecast) {
+  const s = Number(spent) || 0;
+  const f = Number(forecast) || 0;
+  if (f <= 0) {
+    return {
+      card: "border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-900/[0.04]",
+      amount: "text-slate-900",
+      badge: "bg-slate-100 text-slate-600",
+      badgeText: "No forecast set",
+    };
+  }
+  if (s > f) {
+    return {
+      card: "border-rose-200/90 bg-gradient-to-br from-rose-50/90 to-white shadow-md shadow-rose-900/5 ring-1 ring-rose-900/[0.06]",
+      amount: "text-rose-700",
+      badge: "bg-rose-100 text-rose-800",
+      badgeText: "Over forecast",
+    };
+  }
+  if (s >= f * 0.9) {
+    return {
+      card: "border-amber-200/90 bg-gradient-to-br from-amber-50/80 to-white shadow-md shadow-amber-900/5 ring-1 ring-amber-900/[0.05]",
+      amount: "text-amber-800",
+      badge: "bg-amber-100 text-amber-900",
+      badgeText: "Near ceiling (≥90%)",
+    };
+  }
+  return {
+    card: "border-emerald-200/90 bg-gradient-to-br from-emerald-50/70 to-white shadow-md shadow-emerald-900/5 ring-1 ring-emerald-900/[0.04]",
+    amount: "text-emerald-800",
+    badge: "bg-emerald-100 text-emerald-900",
+    badgeText: "Within plan",
+  };
 }
 
 export default function LeadExpensesPage() {
@@ -85,127 +183,237 @@ export default function LeadExpensesPage() {
   }, [id]);
 
   const updates = useMemo(() => sortUpdates(lead?.lead_updates), [lead]);
-  const expenseRows = useMemo(() => {
-    return updates
-      .filter((u) => Number(u?.expense_after ?? 0) !== Number(u?.expense_before ?? 0))
-      .map((u) => {
-        const before = Number(u?.expense_before ?? 0) || 0;
-        const after = Number(u?.expense_after ?? 0) || 0;
-        return {
-          id: u.id,
-          date: sliceDate(u.update_date || u.created_at),
-          before,
-          after,
-          delta: after - before,
-          by: u?.username || u?.full_name || `User ${u?.created_by_id ?? ""}`,
-          summary: u?.discussion_summary || u?.internal_notes || "Expense updated",
-        };
-      });
-  }, [updates]);
 
-  const totalChange = useMemo(
-    () => expenseRows.reduce((sum, row) => sum + Number(row.delta || 0), 0),
-    [expenseRows]
+  const expenseForecast = useMemo(() => {
+    const latest = updates[0] || null;
+    return Number(latest?.expense_after ?? lead?.expected_expenses ?? 0) || 0;
+  }, [updates, lead]);
+
+  const paymentLineRows = useMemo(() => {
+    const fromUpdates = updates.filter((u) => Number(u?.payment) > 0).map(mapUpdateToPaymentRow);
+    if (fromUpdates.length > 0) return fromUpdates;
+    const arr = pickExpensesArray(lead);
+    return arr.map(mapArrayItemToPaymentRow);
+  }, [updates, lead]);
+
+  const totalLinePayments = useMemo(
+    () => paymentLineRows.reduce((sum, row) => sum + Number(row.payment || 0), 0),
+    [paymentLineRows]
   );
 
-  const largestSpike = useMemo(
-    () => expenseRows.reduce((max, row) => Math.max(max, Number(row.delta || 0)), 0),
-    [expenseRows]
+  const sumPaymentsLikeDetail = useMemo(() => sumExpensePayments(lead, updates), [lead, updates]);
+
+  const largestLinePayment = useMemo(
+    () => paymentLineRows.reduce((max, row) => Math.max(max, Number(row.payment || 0)), 0),
+    [paymentLineRows]
   );
 
-  const lastUpdatedOn = expenseRows[0]?.date || "—";
+  const lastUpdatedOn = paymentLineRows[0]?.date || "—";
+
+  const hasLineItems = paymentLineRows.length > 0;
+  const showEmpty = !loading && !error && !hasLineItems;
+
+  const cumulativePresentation = useMemo(
+    () => ledgerSpendPresentation(totalLinePayments, expenseForecast),
+    [totalLinePayments, expenseForecast]
+  );
 
   return (
-    <main className="space-y-6">
-      <section className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <Link href={`/leads/${id}`} className="text-sm font-medium text-indigo-600 hover:text-indigo-800">
-            ← Back to lead
-          </Link>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">Expense History</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            {lead?.brand || "Lead"} · {lead?.activity || "—"}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="rounded-xl border border-slate-200 bg-white px-4 py-2 shadow-sm">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Current</p>
-            <p className="text-base font-bold text-slate-900">{formatMoney(lead?.expected_expenses || 0)}</p>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white px-4 py-2 shadow-sm">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Net</p>
-            <p className={`text-base font-bold ${totalChange >= 0 ? "text-rose-600" : "text-emerald-600"}`}>
-              {totalChange >= 0 ? "+" : ""}{formatMoney(totalChange)}
+    <main className="relative -mx-6 max-w-none bg-slate-50 pb-36 pt-6 sm:pb-44 sm:pt-8 md:pb-52">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-[min(32rem,55vh)] bg-[radial-gradient(ellipse_100%_70%_at_50%_-5%,rgb(199_210_254)_0%,transparent_58%)] opacity-95"
+        aria-hidden
+      />
+      <div className="relative w-full max-w-none px-6 sm:px-8 lg:px-10 xl:px-12 2xl:px-14">
+        <section className="flex flex-col gap-8 xl:grid xl:grid-cols-12 xl:items-start xl:gap-10">
+          <div className="min-w-0 xl:col-span-7">
+            <Link
+              href={`/leads/${id}`}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/90 px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm ring-1 ring-slate-900/5 transition hover:border-indigo-200 hover:bg-indigo-50/80"
+            >
+              <span className="text-slate-400" aria-hidden>
+                ←
+              </span>
+              Back to lead
+            </Link>
+            <h1 className="mt-5 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Expense history</h1>
+            <p className="mt-2 max-w-xl text-base leading-relaxed text-slate-600">
+              <span className="font-semibold text-slate-800">{lead?.brand || "Lead"}</span>
+              <span className="text-slate-400"> · </span>
+              <span>{lead?.activity || "—"}</span>
+            </p>
+            <p className="mt-3 text-sm text-slate-500">
+              Verified cash out vs expense forecast — same numbers as the lead commercial card.
             </p>
           </div>
-        </div>
-      </section>
 
-      {!loading && !error && (
-        <section className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Entries</p>
-            <p className="mt-2 text-2xl font-bold text-slate-900">{expenseRows.length}</p>
-          </div>
-          <div className="rounded-2xl border border-rose-100 bg-rose-50/40 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Net Expense Change</p>
-            <p className={`mt-2 text-2xl font-bold ${totalChange >= 0 ? "text-rose-600" : "text-emerald-600"}`}>
-              {totalChange >= 0 ? "+" : ""}{formatMoney(totalChange)}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-amber-100 bg-amber-50/40 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Largest Spike</p>
-            <p className="mt-2 text-2xl font-bold text-slate-900">{formatMoney(largestSpike)}</p>
-            <p className="mt-1 text-xs text-slate-500">Last updated: {lastUpdatedOn}</p>
+          <div className="flex w-full shrink-0 flex-col gap-3 sm:flex-row xl:col-span-5 xl:max-w-none xl:justify-end xl:gap-4">
+            <div className="min-w-0 flex-1 rounded-2xl border border-slate-200/90 bg-white/95 p-5 shadow-lg shadow-slate-900/[0.06] ring-1 ring-slate-900/[0.04] backdrop-blur-sm sm:min-w-[200px] xl:flex-1">
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </span>
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Verified spend</p>
+              </div>
+              <p className="mt-1 text-xs leading-snug text-slate-500">Logged disbursements on this deal</p>
+              <p className="mt-3 text-2xl font-bold tabular-nums tracking-tight text-slate-900 sm:text-3xl">
+                {formatMoney(sumPaymentsLikeDetail)}
+              </p>
+            </div>
+            <div className="min-w-0 flex-1 rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50/90 via-white to-violet-50/50 p-5 shadow-lg shadow-indigo-900/[0.07] ring-1 ring-indigo-900/[0.05] backdrop-blur-sm sm:min-w-[200px] xl:flex-1">
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                </span>
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-indigo-800/80">Expense forecast</p>
+              </div>
+              <p className="mt-1 text-xs leading-snug text-indigo-900/60">Latest follow-up or deal record</p>
+              <p className="mt-3 text-2xl font-bold tabular-nums tracking-tight text-indigo-950 sm:text-3xl">
+                {formatMoney(expenseForecast)}
+              </p>
+            </div>
           </div>
         </section>
-      )}
 
-      {loading ? (
-        <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">Loading…</div>
-      ) : error ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-700">{error}</div>
-      ) : expenseRows.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-600 shadow-sm">
-          No expense change entries found yet.
+        {!loading && !error && hasLineItems ? (
+          <section className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 xl:gap-6">
+            <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-md shadow-slate-900/[0.04] ring-1 ring-slate-900/[0.03]">
+              <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Ledger entries</p>
+              <p className="mt-1 text-sm text-slate-500">Rows in this table</p>
+              <p className="mt-4 text-3xl font-bold tabular-nums text-slate-900">{paymentLineRows.length}</p>
+            </div>
+            <div className={`rounded-2xl p-6 ${cumulativePresentation.card}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-600">Cumulative disbursements</p>
+                <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cumulativePresentation.badge}`}>
+                  {cumulativePresentation.badgeText}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-slate-500">Sum of payment lines</p>
+              <p className={`mt-4 text-3xl font-bold tabular-nums tracking-tight sm:text-4xl ${cumulativePresentation.amount}`}>
+                {formatMoney(totalLinePayments)}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-amber-50/30 to-orange-50/20 p-6 shadow-md shadow-slate-900/[0.04] ring-1 ring-amber-900/[0.04] sm:col-span-2 lg:col-span-1">
+              <p className="text-xs font-bold uppercase tracking-[0.12em] text-amber-900/70">Peak single outlay</p>
+              <p className="mt-1 text-sm text-slate-600">Largest one-line payment</p>
+              <p className="mt-4 text-3xl font-bold tabular-nums text-slate-900">{formatMoney(largestLinePayment)}</p>
+              <p className="mt-3 text-xs font-medium text-slate-500">Last activity · {lastUpdatedOn}</p>
+            </div>
+          </section>
+        ) : null}
+
+        <div className="mt-10 scroll-mt-8">
+          {loading ? (
+            <div className="space-y-4 rounded-3xl border border-slate-200/80 bg-white p-8 shadow-lg ring-1 ring-slate-900/[0.03]">
+              <div className="h-4 w-48 animate-pulse rounded-lg bg-slate-200" />
+              <div className="h-32 animate-pulse rounded-2xl bg-slate-100" />
+            </div>
+          ) : error ? (
+            <div className="rounded-3xl border border-rose-200 bg-rose-50/90 px-6 py-8 text-rose-800 shadow-sm ring-1 ring-rose-900/10">
+              <p className="font-semibold">Something went wrong</p>
+              <p className="mt-2 text-sm text-rose-700/90">{error}</p>
+            </div>
+          ) : showEmpty ? (
+            <div className="rounded-3xl border border-dashed border-slate-300/90 bg-white px-8 py-16 text-center shadow-lg ring-1 ring-slate-900/[0.03]">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+                <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <p className="mt-6 text-lg font-semibold text-slate-800">No disbursements yet</p>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-600">
+                Record an expense from the lead detail page. Entries appear here as soon as they are saved.
+              </p>
+              <Link
+                href={`/leads/${id}`}
+                className="mt-8 inline-flex items-center justify-center rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-900/20 transition hover:bg-indigo-700"
+              >
+                Go to lead
+              </Link>
+            </div>
+          ) : (
+            <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_20px_50px_-12px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/[0.04]">
+              <div className="shrink-0 border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-indigo-50/40 px-6 py-5 sm:px-8 lg:px-10">
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-indigo-900/50">Ledger</p>
+                <h2 className="mt-1 text-xl font-bold text-slate-900 sm:text-2xl">Disbursement detail</h2>
+                <p className="mt-2 max-w-4xl text-sm leading-relaxed text-slate-600 lg:text-base">
+                  Auditable payment lines from deal activity — amount, purpose, payee, optional proof link, and who recorded it.
+                </p>
+              </div>
+              <div className="overflow-x-auto overscroll-x-contain pb-6 sm:pb-10">
+                <table className="w-full min-w-[44rem] table-fixed text-center text-sm lg:min-w-0">
+                  <thead className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50/95 shadow-sm backdrop-blur-sm">
+                    <tr className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      <th className="w-[14%] whitespace-nowrap px-3 py-4 pl-4 sm:pl-6 lg:pl-8">Date</th>
+                      <th className="w-[14%] whitespace-nowrap px-3 py-4">Payment</th>
+                      <th className="w-[22%] px-3 py-4">Paid for</th>
+                      <th className="w-[22%] px-3 py-4">Paid to</th>
+                      <th className="w-[14%] px-3 py-4">Proof</th>
+                      <th className="w-[14%] px-3 py-4 pr-4 sm:pr-6 lg:pr-8">Recorded by</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {paymentLineRows.map((row, i) => (
+                      <tr
+                        key={row.id}
+                        className={`transition-colors hover:bg-indigo-50/50 ${i % 2 === 1 ? "bg-slate-50/40" : "bg-white"}`}
+                      >
+                        <td className="px-3 py-4 pl-4 align-middle sm:pl-6 lg:pl-8">
+                          <div className="flex justify-center">
+                            <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 tabular-nums">
+                              {row.date || "—"}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-4 align-middle">
+                          <span className="text-base font-bold tabular-nums text-slate-900">{formatMoney(row.payment)}</span>
+                        </td>
+                        <td className="break-words px-3 py-4 align-middle font-medium text-slate-800">{row.paid_for}</td>
+                        <td className="break-words px-3 py-4 align-middle text-slate-700">{row.paid_to}</td>
+                        <td className="px-3 py-4 align-middle">
+                          <div className="flex justify-center">
+                            {row.expence_link ? (
+                              <a
+                                href={
+                                  /^https?:\/\//i.test(String(row.expence_link))
+                                    ? String(row.expence_link)
+                                    : `https://${String(row.expence_link).replace(/^\/+/, "")}`
+                                }
+                                className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-800 transition hover:border-indigo-300 hover:bg-indigo-100"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={row.expence_link}
+                              >
+                                Open
+                                <span aria-hidden className="text-indigo-500">
+                                  ↗
+                                </span>
+                              </a>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="break-words px-3 py-4 pr-4 align-middle text-slate-600 sm:pr-6 lg:pr-8">{row.by}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr aria-hidden>
+                      <td colSpan={6} className="h-12 border-0 bg-transparent p-0 sm:h-16" />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </section>
+          )}
         </div>
-      ) : (
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 bg-slate-50/70 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Expense Movement Log</p>
-          </div>
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Before</th>
-                <th className="px-4 py-3">After</th>
-                <th className="px-4 py-3">Change</th>
-                <th className="px-4 py-3">Updated by</th>
-                <th className="px-4 py-3">Note</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {expenseRows.map((row) => (
-                <tr key={row.id} className="hover:bg-slate-50/60">
-                  <td className="px-4 py-3 text-slate-700">{row.date || "—"}</td>
-                  <td className="px-4 py-3 font-medium text-slate-700">{formatMoney(row.before)}</td>
-                  <td className="px-4 py-3 font-medium text-slate-900">{formatMoney(row.after)}</td>
-                  <td className="px-4 py-3">
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                      row.delta >= 0 ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"
-                    }`}>
-                      {row.delta >= 0 ? "+" : ""}{formatMoney(row.delta)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-slate-700">{row.by}</td>
-                  <td className="px-4 py-3 text-slate-600">{row.summary}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
+      </div>
     </main>
   );
 }

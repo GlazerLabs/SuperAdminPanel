@@ -19,7 +19,7 @@ const STATUS_OPTIONS = [
 
 const CHANNEL_OPTIONS = ["Email", "Phone", "Call", "WhatsApp", "In-person", "Social", "Website", "Referral", "Other"];
 
-const UPDATE_TYPES = ["Follow-up", "Meeting", "Proposal", "Negotiation", "Closure", "Other"];
+const UPDATE_TYPES = ["Follow-up", "Meeting", "Proposal", "Negotiation", "Closure", "Expense", "Other"];
 
 const SENTIMENT_OPTIONS = ["Positive", "Neutral", "Negative", "Not discussed"];
 
@@ -70,10 +70,16 @@ function formatMoney(n) {
   return `₹${Math.round(num)}`;
 }
 
-function getExpenseColorClass(expenseAmount) {
-  const amount = Number(expenseAmount || 0);
-  if (amount > 100000) return "text-rose-300 hover:text-rose-200";
-  if (amount >= 80000) return "text-amber-300 hover:text-amber-200";
+/** Spend (e.g. sum of payments) vs total expense budget from follow-up / record. */
+function getSpendVsBudgetColorClass(spentAmount, totalExpenseBudget) {
+  const spent = Number(spentAmount || 0);
+  const budget = Number(totalExpenseBudget || 0);
+  if (budget <= 0) {
+    if (spent > 0) return "text-rose-300 hover:text-rose-200";
+    return "text-emerald-300 hover:text-emerald-200";
+  }
+  if (spent > budget) return "text-rose-300 hover:text-rose-200";
+  if (spent >= budget * 0.9) return "text-amber-300 hover:text-amber-200";
   return "text-emerald-300 hover:text-emerald-200";
 }
 
@@ -236,6 +242,35 @@ function pickExpenseExcelLink(row) {
   return String(v).trim();
 }
 
+/** API may expose expense lines under several keys; each item may include `payment`. */
+function pickExpensesArray(row) {
+  if (!row) return [];
+  const raw =
+    row.expenses ??
+    row.expense_entries ??
+    row.expense_list ??
+    row.expence_list ??
+    row.lead_expenses ??
+    row.lead_expences;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((x) => x && typeof x === "object");
+}
+
+function sumExpensePayments(row, updatesSorted) {
+  const arr = pickExpensesArray(row);
+  if (arr.length > 0) {
+    return arr.reduce((sum, item) => {
+      const n = Number(item?.payment);
+      return sum + (Number.isFinite(n) ? n : 0);
+    }, 0);
+  }
+  if (!Array.isArray(updatesSorted)) return 0;
+  return updatesSorted.reduce((sum, item) => {
+    const n = Number(item?.payment);
+    return sum + (Number.isFinite(n) ? n : 0);
+  }, 0);
+}
+
 function leadToOverviewForm(lead) {
   if (!lead) return emptyOverviewForm();
   return {
@@ -283,6 +318,7 @@ export default function LeadDetailPage() {
   const [expensePaidForInput, setExpensePaidForInput] = useState("");
   const [expensePaidToInput, setExpensePaidToInput] = useState("");
   const [expenseDescriptionInput, setExpenseDescriptionInput] = useState("");
+  const [expenseLinkInput, setExpenseLinkInput] = useState("");
   const [expenseFile, setExpenseFile] = useState(null);
   const [savingExpenseEntry, setSavingExpenseEntry] = useState(false);
 
@@ -357,16 +393,10 @@ export default function LeadDetailPage() {
   })();
   const valueNow = Number(previousUpdate?.value_after ?? lead?.expected_revenue ?? 0) || 0;
   const expenseNow = Number(previousUpdate?.expense_after ?? lead?.expected_expenses ?? 0) || 0;
-  const expenseColorClass = useMemo(() => getExpenseColorClass(expenseNow), [expenseNow]);
-  const totalExpense = useMemo(
-    () =>
-      updates.reduce((sum, item) => {
-        const before = Number(item?.expense_before ?? 0) || 0;
-        const after = Number(item?.expense_after ?? before) || 0;
-        const delta = after - before;
-        return delta > 0 ? sum + delta : sum;
-      }, 0),
-    [updates]
+  const sumLinePayments = useMemo(() => sumExpensePayments(lead, updates), [lead, updates]);
+  const expenseColorClass = useMemo(
+    () => getSpendVsBudgetColorClass(sumLinePayments, expenseNow),
+    [sumLinePayments, expenseNow]
   );
 
   const expenseExcelLink = useMemo(() => pickExpenseExcelLink(lead), [lead]);
@@ -378,6 +408,7 @@ export default function LeadDetailPage() {
     setExpensePaidForInput("");
     setExpensePaidToInput("");
     setExpenseDescriptionInput("");
+    setExpenseLinkInput("");
     setExpenseFile(null);
     setActionError(null);
     setShowAddExpenseModal(true);
@@ -390,8 +421,20 @@ export default function LeadDetailPage() {
       setActionError("Enter a valid expense amount.");
       return;
     }
-    if (!expenseFile) {
-      setActionError("Upload a file (excel, pdf, image, etc.) for invoice folder.");
+    const paidFor = String(expensePaidForInput || "").trim();
+    const paidTo = String(expensePaidToInput || "").trim();
+    const description = String(expenseDescriptionInput || "").trim();
+    const expenceLink = String(expenseLinkInput || "").trim();
+    if (!paidFor) {
+      setActionError("Paid for is required.");
+      return;
+    }
+    if (!paidTo) {
+      setActionError("Paid to is required.");
+      return;
+    }
+    if (!expenceLink) {
+      setActionError("Expense link (URL) is required.");
       return;
     }
 
@@ -399,29 +442,64 @@ export default function LeadDetailPage() {
     setActionError(null);
     setActionOk(null);
     try {
-      const form = new FormData();
-      form.append("file", expenseFile);
-      form.append("subfolder", "invoice");
-      form.append("leadName", lead.brand || lead.activity || `Lead-${lead.id}`);
-      const uploadRes = await fetch(`/api/leads/${lead.id}/upload`, {
-        method: "POST",
-        body: form,
-      });
-      const uploadData = await uploadRes.json().catch(() => ({}));
-      if (!uploadRes.ok) {
-        throw new Error(uploadData?.error || "File upload failed.");
+      if (expenseFile) {
+        const form = new FormData();
+        form.append("file", expenseFile);
+        form.append("subfolder", "invoice");
+        form.append("leadName", lead.brand || lead.activity || `Lead-${lead.id}`);
+        const uploadRes = await fetch(`/api/leads/${lead.id}/upload`, {
+          method: "POST",
+          body: form,
+        });
+        const uploadData = await uploadRes.json().catch(() => ({}));
+        if (!uploadRes.ok) {
+          throw new Error(uploadData?.error || "File upload failed.");
+        }
       }
 
-      const updatedExpense = Number(expenseNow || 0) + Number(parsedAmount);
-      await putApi(`lead-tracking/${lead.id}`, {
-        expected_expenses: updatedExpense,
-        paid_for: String(expensePaidForInput || "").trim(),
-        paid_to: String(expensePaidToInput || "").trim(),
-        expense_description: String(expenseDescriptionInput || "").trim(),
-      });
+      const today = new Date().toISOString().slice(0, 10);
+      const summaryParts = [
+        `Expense added: ${formatMoney(parsedAmount)} for ${paidFor}.`,
+        `Paid to ${paidTo}.`,
+      ];
+      if (description) summaryParts.push(description);
+      const discussionSummary = summaryParts.join(" ");
+
+      const patchBody = {
+        lead_id: Number(lead.id),
+        brand: lead.brand ?? "",
+        update_date: today,
+        channel: "In-person",
+        update_type: "Expense",
+        discussion_summary: discussionSummary,
+        client_sentiment: "Neutral",
+        outcome: "No change",
+        stage_before: stageNow,
+        stage_after: stageNow,
+        value_before: valueNow,
+        value_after: valueNow,
+        expense_before: expenseNow,
+        expense_after: expenseNow,
+        next_action: lead?.next_step?.trim() || "",
+        next_follow_up_date: sliceDate(lead?.next_follow_up_date) || null,
+        next_follow_up_owner_id: null,
+        expected_activity_date: sliceDate(lead?.expected_activity_date) || null,
+        expected_closure_date: sliceDate(lead?.expected_closure_date) || null,
+        risks_blockers: "",
+        dependencies: "",
+        links_attachments: expenceLink,
+        internal_notes: "",
+        payment: parsedAmount,
+        paid_for: paidFor,
+        paid_to: paidTo,
+        description,
+        expence_link: expenceLink,
+      };
+
+      await patchApi(`lead-tracking/${lead.id}`, patchBody);
 
       setShowAddExpenseModal(false);
-      setActionOk(`Expense added and file uploaded to invoice folder.`);
+      setActionOk(expenseFile ? "Expense saved, timeline updated, and file uploaded to invoice folder." : "Expense saved and timeline updated.");
       await loadLead();
     } catch (err) {
       setActionError(err?.message || String(err) || "Could not save expense entry.");
@@ -720,19 +798,28 @@ export default function LeadDetailPage() {
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/60">Commercial</p>
           <p className="mt-3 text-3xl font-bold tabular-nums">{formatMoney(valueNow)}</p>
           <p className="mt-1 text-sm text-white/75">Expected revenue</p>
-          <div className="mt-4 flex items-end justify-between gap-3">
-            <div>
-              <p className="text-[11px] uppercase tracking-wide text-white/60">Total expense</p>
-              <p className="text-lg font-semibold tabular-nums text-white/90">{formatMoney(totalExpense)}</p>
+          <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur-sm">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">Expense forecast</p>
+                <p className="mt-1 text-xl font-bold tabular-nums tracking-tight text-white sm:text-2xl">{formatMoney(expenseNow)}</p>
+                <p className="mt-0.5 text-[11px] text-white/45">From latest follow-up or record</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push(`/leads/${lead.id}/expenses`)}
+                className={`group flex shrink-0 flex-col items-end rounded-lg px-2 py-1 text-right transition hover:bg-white/5 ${expenseColorClass}`}
+              >
+                <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/45 group-hover:text-white/55">
+                  <svg className="h-3.5 w-3.5 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  Verified spend
+                </span>
+                <span className="mt-0.5 text-xl font-bold tabular-nums tracking-tight sm:text-2xl">{formatMoney(sumLinePayments)}</span>
+                <span className="mt-1 text-[10px] font-medium text-white/40 underline-offset-2 group-hover:underline">Open ledger →</span>
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => router.push(`/leads/${lead.id}/expenses`)}
-              className={`inline-flex items-center gap-2 text-xl font-semibold tabular-nums ${expenseColorClass}`}
-            >
-              <span aria-hidden className="text-base">🔎</span>
-              <span>{formatMoney(expenseNow)}</span>
-            </button>
           </div>
           <div className="mt-4 border-t border-white/10 pt-4">
             {expenseExcelLink ? (
@@ -746,23 +833,25 @@ export default function LeadDetailPage() {
                 rel="noopener noreferrer"
                 title={expenseExcelLink}
                 aria-label={`Open all expenses (${expenseExcelLink})`}
-                className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-200 underline decoration-white/30 underline-offset-2 hover:text-white"
+                className="inline-flex items-center gap-2 rounded-lg px-1 py-0.5 text-sm font-semibold text-emerald-200/95 underline decoration-white/25 underline-offset-4 transition hover:text-white hover:decoration-white/50"
               >
-                <span aria-hidden className="text-base leading-none">
-                  📊
-                </span>
-                All expenses
+                <svg className="h-4 w-4 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                Expense workbook
               </a>
             ) : (
-              <p className="text-xs text-white/50">No expense sheet link yet.</p>
+              <p className="text-xs text-white/45">No workbook link on file.</p>
             )}
             <button
               type="button"
               onClick={openAddExpenseModal}
-              className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold text-white shadow-sm backdrop-blur-sm transition hover:bg-white/15"
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-md shadow-black/10 transition hover:bg-slate-100"
             >
-              <span aria-hidden>➕</span>
-              Add expense
+              <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add disbursement
             </button>
           </div>
         </div>
@@ -852,6 +941,13 @@ export default function LeadDetailPage() {
                           Stage: {u.stage_before || "—"} <span className="text-indigo-600">→</span> {u.stage_after || "—"}
                         </span>
                       )}
+                      {Number(u.payment) > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-900">
+                          Expense recorded: {formatMoney(u.payment)}
+                          {u.paid_for ? <span className="font-medium text-rose-800"> — {u.paid_for}</span> : null}
+                          {u.paid_to ? <span className="text-rose-700"> · To {u.paid_to}</span> : null}
+                        </span>
+                      )}
                       {(displayValueBefore !== displayValueAfter || displayExpenseBefore !== displayExpenseAfter) && (
                         <>
                           <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-900">
@@ -863,7 +959,11 @@ export default function LeadDetailPage() {
                         </>
                       )}
                     </div>
-                    {(u.risk_blockers || u.dependencies || u.attachments_links || u.links_attachments) && (
+                    {(u.risk_blockers ||
+                      u.dependencies ||
+                      u.attachments_links ||
+                      u.links_attachments ||
+                      u.expence_link) && (
                       <div className="mt-3 space-y-1 border-t border-slate-100 pt-3 text-xs text-slate-600">
                         {u.risk_blockers ? <p><span className="font-semibold text-slate-700">Risks:</span> {u.risk_blockers}</p> : null}
                         {u.dependencies ? <p><span className="font-semibold text-slate-700">Dependencies:</span> {u.dependencies}</p> : null}
@@ -875,8 +975,30 @@ export default function LeadDetailPage() {
                             </a>
                           </p>
                         ) : null}
+                        {u.expence_link ? (
+                          <p className="truncate">
+                            <span className="font-semibold text-slate-700">Expense sheet:</span>{" "}
+                            <a
+                              href={
+                                /^https?:\/\//i.test(String(u.expence_link))
+                                  ? String(u.expence_link)
+                                  : `https://${String(u.expence_link).replace(/^\/+/, "")}`
+                              }
+                              className="text-indigo-600 hover:underline"
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {u.expence_link}
+                            </a>
+                          </p>
+                        ) : null}
                       </div>
                     )}
+                    {u.description || u.expense_description ? (
+                      <p className="mt-2 text-xs text-slate-600">
+                        <span className="font-semibold text-slate-700">Expense notes:</span> {u.description || u.expense_description}
+                      </p>
+                    ) : null}
                     {u.internal_notes ? (
                       <p className="mt-2 rounded-lg bg-amber-50/80 px-3 py-2 text-[11px] text-amber-950">
                         <span className="font-bold">Internal:</span> {u.internal_notes}
@@ -1506,105 +1628,117 @@ export default function LeadDetailPage() {
       )}
 
       {showAddExpenseModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-4 backdrop-blur-[2px] sm:items-center sm:p-6">
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="add-expense-title"
-            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-200"
+            className="flex max-h-[min(92vh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-900/10"
           >
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h2 id="add-expense-title" className="text-lg font-bold text-slate-900">
-                  Add expense
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Add paid amount and upload supporting file. File will be uploaded to the
-                  <span className="font-semibold text-slate-700"> invoice </span>
-                  folder in OneDrive.
-                </p>
-              </div>
+            <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 px-6 pb-8 pt-6 text-white">
               <button
                 type="button"
                 onClick={() => setShowAddExpenseModal(false)}
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                className="absolute right-4 top-4 rounded-lg p-2 text-white/70 transition hover:bg-white/10 hover:text-white"
                 aria-label="Close"
               >
-                ✕
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/45">New entry</p>
+              <h2 id="add-expense-title" className="mt-1 text-xl font-bold tracking-tight sm:text-2xl">
+                Log disbursement
+              </h2>
+              <p className="mt-2 max-w-md text-sm leading-relaxed text-white/70">
+                Saved like a follow-up update. Optional file lands in the lead&apos;s{" "}
+                <span className="font-semibold text-white/90">invoice</span> folder in OneDrive.
+              </p>
             </div>
-            <label className="mt-4 block text-sm">
-              <span className="font-medium text-slate-700">Paid amount</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={expenseAmountInput}
-                onChange={(e) => setExpenseAmountInput(e.target.value)}
-                onBlur={() => {
-                  const parsed = parseIndianRupeeInput(expenseAmountInput);
-                  if (parsed !== null) setExpenseAmountInput(String(parsed));
-                }}
-                placeholder="E.g. 12000, 1.2l, 50k"
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="mt-4 block text-sm">
-              <span className="font-medium text-slate-700">Invoice file</span>
-              <input
-                type="file"
-                onChange={(e) => setExpenseFile(e.target.files?.[0] || null)}
-                className="mt-1 block w-full text-xs text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
-              />
-              <p className="mt-1 text-xs text-slate-500">Allowed: excel, pdf, image, or any document.</p>
-            </label>
-            <label className="mt-4 block text-sm">
-              <span className="font-medium text-slate-700">Paid For</span>
-              <input
-                type="text"
-                value={expensePaidForInput}
-                onChange={(e) => setExpensePaidForInput(e.target.value)}
-                placeholder="What was this expense for?"
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="mt-4 block text-sm">
-              <span className="font-medium text-slate-700">Paid To</span>
-              <input
-                type="text"
-                value={expensePaidToInput}
-                onChange={(e) => setExpensePaidToInput(e.target.value)}
-                placeholder="Vendor or person name"
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="mt-4 block text-sm">
-              <span className="font-medium text-slate-700">Description</span>
-              <textarea
-                rows={2}
-                value={expenseDescriptionInput}
-                onChange={(e) => setExpenseDescriptionInput(e.target.value)}
-                placeholder="Extra notes about this expense"
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              />
-            </label>
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-4">
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddExpenseModal(false)}
-                  className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={savingExpenseEntry}
-                  onClick={saveExpenseEntry}
-                  className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-                >
-                  {savingExpenseEntry ? "Saving…" : "Save expense"}
-                </button>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+              <div className="grid gap-5 sm:grid-cols-2">
+                <label className="block text-sm sm:col-span-2">
+                  <span className="font-semibold text-slate-800">Amount</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={expenseAmountInput}
+                    onChange={(e) => setExpenseAmountInput(e.target.value)}
+                    onBlur={() => {
+                      const parsed = parseIndianRupeeInput(expenseAmountInput);
+                      if (parsed !== null) setExpenseAmountInput(String(parsed));
+                    }}
+                    placeholder="e.g. 12000, 1.2L, 50K"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-500/15"
+                  />
+                </label>
+                <label className="block text-sm sm:col-span-2">
+                  <span className="font-semibold text-slate-800">Proof link</span>
+                  <input
+                    type="url"
+                    value={expenseLinkInput}
+                    onChange={(e) => setExpenseLinkInput(e.target.value)}
+                    placeholder="https://…"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-500/15"
+                  />
+                  <p className="mt-1.5 text-xs text-slate-500">Receipt, sheet, or invoice URL.</p>
+                </label>
+                <label className="block text-sm sm:col-span-2">
+                  <span className="font-semibold text-slate-800">Attachment (optional)</span>
+                  <input
+                    type="file"
+                    onChange={(e) => setExpenseFile(e.target.files?.[0] || null)}
+                    className="mt-1.5 block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-4 file:py-2 file:text-xs file:font-bold file:text-white file:shadow-sm hover:file:bg-indigo-700"
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="font-semibold text-slate-800">Paid for</span>
+                  <input
+                    type="text"
+                    value={expensePaidForInput}
+                    onChange={(e) => setExpensePaidForInput(e.target.value)}
+                    placeholder="Category or purpose"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-slate-900/5"
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="font-semibold text-slate-800">Paid to</span>
+                  <input
+                    type="text"
+                    value={expensePaidToInput}
+                    onChange={(e) => setExpensePaidToInput(e.target.value)}
+                    placeholder="Vendor or payee"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-slate-900/5"
+                  />
+                </label>
+                <label className="block text-sm sm:col-span-2">
+                  <span className="font-semibold text-slate-800">Notes</span>
+                  <textarea
+                    rows={2}
+                    value={expenseDescriptionInput}
+                    onChange={(e) => setExpenseDescriptionInput(e.target.value)}
+                    placeholder="Optional context for finance or leadership"
+                    className="mt-1.5 w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-slate-900/5"
+                  />
+                </label>
               </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 bg-slate-50/80 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setShowAddExpenseModal(false)}
+                className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-white hover:text-slate-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={savingExpenseEntry}
+                onClick={saveExpenseEntry}
+                className="rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-indigo-900/25 transition hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {savingExpenseEntry ? "Saving…" : "Save to ledger"}
+              </button>
             </div>
           </div>
         </div>
