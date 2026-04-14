@@ -15,7 +15,7 @@ export async function POST(req, { params }) {
 
     const formData = await req.formData();
     const file = formData.get("file");
-    const subfolder = String(formData.get("subfolder") || "other");
+    const subfolder = String(formData.get("subfolder") || "Others");
     const leadName = String(formData.get("leadName") || `Lead-${leadId}`);
 
     if (!file || typeof file === "string") {

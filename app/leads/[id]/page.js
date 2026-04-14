@@ -298,6 +298,29 @@ function leadToOverviewForm(lead) {
   };
 }
 
+function createEmptyFollowUpState({ updateDate, updateType }) {
+  return {
+    update_date: updateDate || new Date().toISOString().slice(0, 10),
+    channel: "Call",
+    update_type: updateType || "Follow-up",
+    discussion_summary: "",
+    client_sentiment: "Neutral",
+    outcome: "Progressed",
+    stage_after: "",
+    value_after: "",
+    expense_after: "",
+    next_action: "",
+    next_follow_up_date: "",
+    next_follow_up_owner_id: "",
+    expected_activity_date: "",
+    expected_closure_date: "",
+    risks_blockers: "",
+    dependencies: "",
+    links_attachments: "",
+    internal_notes: "",
+  };
+}
+
 export default function LeadDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -323,26 +346,12 @@ export default function LeadDetailPage() {
 
   const [overviewForm, setOverviewForm] = useState(emptyOverviewForm);
 
-  const [followUp, setFollowUp] = useState({
-    update_date: new Date().toISOString().slice(0, 10),
-    channel: "Call",
-    update_type: "Follow-up",
-    discussion_summary: "",
-    client_sentiment: "Neutral",
-    outcome: "Progressed",
-    stage_after: "",
-    value_after: "",
-    expense_after: "",
-    next_action: "",
-    next_follow_up_date: "",
-    next_follow_up_owner_id: "",
-    expected_activity_date: "",
-    expected_closure_date: "",
-    risks_blockers: "",
-    dependencies: "",
-    links_attachments: "",
-    internal_notes: "",
-  });
+  const [followUp, setFollowUp] = useState(() =>
+    createEmptyFollowUpState({
+      updateDate: new Date().toISOString().slice(0, 10),
+      updateType: "Follow-up",
+    })
+  );
 
   const loadLead = useCallback(async () => {
     if (!id) return;
@@ -441,7 +450,7 @@ export default function LeadDetailPage() {
     try {
       const form = new FormData();
       form.append("file", expenseFile);
-      form.append("subfolder", "invoice");
+      form.append("subfolder", "Invoices");
       form.append("leadName", lead.brand || lead.activity || `Lead-${lead.id}`);
       const uploadRes = await fetch(`/api/leads/${lead.id}/upload`, {
         method: "POST",
@@ -504,7 +513,7 @@ export default function LeadDetailPage() {
 
       setShowAddExpenseModal(false);
       setActionOk(
-        "Expense saved with OneDrive proof link, timeline updated, and file in the invoice folder."
+        "Expense saved with OneDrive proof link, timeline updated, and file in the Invoices folder."
       );
       await loadLead();
     } catch (err) {
@@ -530,19 +539,12 @@ export default function LeadDetailPage() {
   const openFollowUpModal = () => {
     setActionError(null);
     setActionOk(null);
-    setFollowUp((prev) => ({
-      ...prev,
-      update_date: new Date().toISOString().slice(0, 10),
-      stage_after: stageNow,
-      value_after: String(valueNow || ""),
-      expense_after: String(expenseNow || ""),
-      next_follow_up_date: sliceDate(lead?.next_follow_up_date) || "",
-      expected_activity_date: sliceDate(lead?.expected_activity_date) || "",
-      expected_closure_date: sliceDate(lead?.expected_closure_date) || "",
-      risks_blockers: lead?.risk_blockers || latest?.risk_blockers || "",
-      dependencies: lead?.dependencies || latest?.dependencies || "",
-      links_attachments: latest?.attachments_links || latest?.links_attachments || lead?.proposal_link || "",
-    }));
+    setFollowUp((prev) =>
+      createEmptyFollowUpState({
+        updateDate: new Date().toISOString().slice(0, 10),
+        updateType: prev.update_type || "Follow-up",
+      })
+    );
     setShowFollowUp(true);
   };
 
@@ -728,7 +730,7 @@ export default function LeadDetailPage() {
         <div>
           <Link
             href="/leads"
-            className="inline-flex items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-800"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-indigo-600 shadow-sm transition hover:bg-slate-50 hover:text-indigo-700"
           >
             ← All leads
           </Link>
@@ -861,7 +863,7 @@ export default function LeadDetailPage() {
               <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              Add disbursement
+              Add expense
             </button>
           </div>
         </div>
@@ -986,7 +988,7 @@ export default function LeadDetailPage() {
                           </p>
                         ) : null}
                         {u.expence_link ? (
-                          <p className="truncate">
+                          <p>
                             <span className="font-semibold text-slate-700">Expense sheet:</span>{" "}
                             <a
                               href={
@@ -994,11 +996,11 @@ export default function LeadDetailPage() {
                                   ? String(u.expence_link)
                                   : `https://${String(u.expence_link).replace(/^\/+/, "")}`
                               }
-                              className="text-indigo-600 hover:underline"
+                              className="font-semibold text-indigo-600 hover:underline"
                               target="_blank"
                               rel="noreferrer"
                             >
-                              {u.expence_link}
+                              Open file
                             </a>
                           </p>
                         ) : null}
@@ -1643,9 +1645,9 @@ export default function LeadDetailPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="add-expense-title"
-            className="flex max-h-[min(92vh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-900/10"
+            className="flex max-h-[min(92vh,720px)] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-900/10"
           >
-            <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 px-6 pb-8 pt-6 text-white">
+            <div className="relative bg-gradient-to-br from-[#0f1f45] via-[#1a2f63] to-[#6a63dc] px-6 pb-8 pt-6 text-white">
               <button
                 type="button"
                 onClick={() => setShowAddExpenseModal(false)}
@@ -1658,11 +1660,11 @@ export default function LeadDetailPage() {
               </button>
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/45">New entry</p>
               <h2 id="add-expense-title" className="mt-1 text-xl font-bold tracking-tight sm:text-2xl">
-                Log disbursement
+                Add Expense
               </h2>
               <p className="mt-2 max-w-md text-sm leading-relaxed text-white/70">
                 Saved like a follow-up update. Optional file lands in the lead&apos;s{" "}
-                <span className="font-semibold text-white/90">invoice</span> folder in OneDrive.
+                <span className="font-semibold text-white/90">Invoices</span> folder in OneDrive.
               </p>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
@@ -1687,13 +1689,8 @@ export default function LeadDetailPage() {
                   <input
                     type="file"
                     onChange={(e) => setExpenseFile(e.target.files?.[0] || null)}
-                    className="mt-1.5 block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-4 file:py-2 file:text-xs file:font-bold file:text-white file:shadow-sm hover:file:bg-indigo-700"
+                    className="mt-1.5 block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-xs file:font-bold file:text-white file:shadow-sm hover:file:bg-slate-800"
                   />
-                  <p className="mt-1.5 text-xs text-slate-500">
-                    Uploads to the lead&apos;s <span className="font-semibold text-slate-700">invoice</span> folder. On
-                    success, a <span className="font-semibold text-slate-700">OneDrive share link</span> is saved as
-                    proof automatically.
-                  </p>
                 </label>
                 <label className="block text-sm">
                   <span className="font-semibold text-slate-800">Paid for</span>
@@ -1739,9 +1736,9 @@ export default function LeadDetailPage() {
                 type="button"
                 disabled={savingExpenseEntry}
                 onClick={saveExpenseEntry}
-                className="rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-indigo-900/25 transition hover:bg-indigo-700 disabled:opacity-50"
+                className="rounded-xl bg-indigo-600 px-5 py-2 text-base font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60"
               >
-                {savingExpenseEntry ? "Saving…" : "Save to ledger"}
+                {savingExpenseEntry ? "Saving…" : "Add"}
               </button>
             </div>
           </div>

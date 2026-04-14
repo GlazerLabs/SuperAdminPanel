@@ -124,7 +124,7 @@ function ledgerSpendPresentation(spent, forecast) {
       card: "border-rose-200/90 bg-gradient-to-br from-rose-50/90 to-white shadow-md shadow-rose-900/5 ring-1 ring-rose-900/[0.06]",
       amount: "text-rose-700",
       badge: "bg-rose-100 text-rose-800",
-      badgeText: "Over forecast",
+      badgeText: "Above budget",
     };
   }
   if (s >= f * 0.9) {
@@ -252,12 +252,12 @@ export default function LeadExpensesPage() {
               <div className="flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 </span>
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Verified spend</p>
               </div>
-              <p className="mt-1 text-xs leading-snug text-slate-500">Logged disbursements on this deal</p>
+              <p className="mt-1 text-xs leading-snug text-slate-500">Total expenses added for this deal</p>
               <p className="mt-3 text-2xl font-bold tabular-nums tracking-tight text-slate-900 sm:text-3xl">
                 {formatMoney(sumPaymentsLikeDetail)}
               </p>
@@ -282,7 +282,7 @@ export default function LeadExpensesPage() {
         {!loading && !error && hasLineItems ? (
           <section className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 xl:gap-6">
             <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-md shadow-slate-900/[0.04] ring-1 ring-slate-900/[0.03]">
-              <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Ledger entries</p>
+              <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Total entries</p>
               <p className="mt-1 text-sm text-slate-500">Rows in this table</p>
               <p className="mt-4 text-3xl font-bold tabular-nums text-slate-900">{paymentLineRows.length}</p>
             </div>
