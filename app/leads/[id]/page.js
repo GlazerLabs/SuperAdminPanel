@@ -812,28 +812,30 @@ export default function LeadDetailPage() {
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/60">Commercial</p>
           <p className="mt-3 text-3xl font-bold tabular-nums">{formatMoney(valueNow)}</p>
           <p className="mt-1 text-sm text-white/75">Expected revenue</p>
-          <div className="mt-5 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur-sm [-webkit-overflow-scrolling:touch]">
-            <div className="flex flex-nowrap items-end justify-between gap-3 sm:gap-4">
-              <div className="shrink-0">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">Expense forecast</p>
-                <p className="mt-1 text-xl font-bold tabular-nums tracking-tight text-white sm:text-2xl">{formatMoney(expenseNow)}</p>
-                <p className="mt-0.5 whitespace-nowrap text-[11px] text-white/45">
-                  From latest follow-up or record
+          <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex min-w-0 flex-col gap-y-1.5">
+                <p className="flex min-h-4.5 items-center text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">
+                  Expense forecast
                 </p>
+                <p className="text-xl font-bold tabular-nums tracking-tight text-white sm:text-2xl">{formatMoney(expenseNow)}</p>
+                <span className="invisible text-[10px] font-medium leading-snug" aria-hidden>
+                  Open ledger →
+                </span>
               </div>
               <button
                 type="button"
                 onClick={() => router.push(`/leads/${lead.id}/expenses`)}
-                className={`group flex shrink-0 flex-col items-end rounded-lg px-2 py-1 text-right transition hover:bg-white/5 ${expenseColorClass}`}
+                className={`group flex shrink-0 flex-col items-end gap-y-1.5 rounded-lg px-2 py-1 text-right transition hover:bg-white/5 ${expenseColorClass}`}
               >
-                <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/45 group-hover:text-white/55">
-                  <svg className="h-3.5 w-3.5 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                <span className="flex min-h-4.5 items-center justify-end gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/45 group-hover:text-white/55">
+                  <svg className="h-3.5 w-3.5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
                   Verified spend
                 </span>
-                <span className="mt-0.5 text-xl font-bold tabular-nums tracking-tight sm:text-2xl">{formatMoney(sumLinePayments)}</span>
-                <span className="mt-1 text-[10px] font-medium text-white/40 underline-offset-2 group-hover:underline">Open ledger →</span>
+                <span className="text-xl font-bold tabular-nums tracking-tight sm:text-2xl">{formatMoney(sumLinePayments)}</span>
+                <span className="text-[10px] font-medium leading-snug text-white/40 underline-offset-2 group-hover:underline">Open ledger →</span>
               </button>
             </div>
           </div>
