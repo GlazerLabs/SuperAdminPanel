@@ -777,6 +777,7 @@ export default function LeadTrackingPage() {
           <table className="min-w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-2.5">Lead ID</th>
                 <th className="px-4 py-2.5">Brand</th>
                 <th className="px-4 py-2.5">Activity</th>
                 <th className="px-4 py-2.5">Owner</th>
@@ -792,6 +793,9 @@ export default function LeadTrackingPage() {
               {loading ? (
                 Array.from({ length: 5 }).map((_, idx) => (
                   <tr key={idx} className="animate-pulse">
+                    <td className="px-4 py-3">
+                      <div className="h-3.5 w-16 rounded bg-slate-100" />
+                    </td>
                     <td className="px-4 py-3">
                       <div className="h-3.5 w-24 rounded bg-slate-100" />
                     </td>
@@ -824,7 +828,7 @@ export default function LeadTrackingPage() {
               ) : leads.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="px-4 py-6 text-center text-xs text-slate-500"
                   >
                     No leads yet. Click &quot;Add lead&quot; to create your first one.
@@ -849,6 +853,11 @@ export default function LeadTrackingPage() {
                       }}
                       className="hover:bg-slate-50/60 text-[13px] cursor-pointer"
                     >
+                      <td className="px-4 py-2.5 text-slate-700 tabular-nums">
+                        {row.lead_id != null && String(row.lead_id).trim() !== ""
+                          ? row.lead_id
+                          : "-"}
+                      </td>
                       <td className="px-4 py-2.5 text-slate-900">{row.brand}</td>
                       <td className="px-4 py-2.5 text-slate-700">{row.activityName}</td>
                       <td className="px-4 py-2.5 text-slate-700">{row.leadOwner}</td>

@@ -318,7 +318,6 @@ export default function LeadDetailPage() {
   const [expensePaidForInput, setExpensePaidForInput] = useState("");
   const [expensePaidToInput, setExpensePaidToInput] = useState("");
   const [expenseDescriptionInput, setExpenseDescriptionInput] = useState("");
-  const [expenseLinkInput, setExpenseLinkInput] = useState("");
   const [expenseFile, setExpenseFile] = useState(null);
   const [savingExpenseEntry, setSavingExpenseEntry] = useState(false);
 
@@ -408,7 +407,6 @@ export default function LeadDetailPage() {
     setExpensePaidForInput("");
     setExpensePaidToInput("");
     setExpenseDescriptionInput("");
-    setExpenseLinkInput("");
     setExpenseFile(null);
     setActionError(null);
     setShowAddExpenseModal(true);
@@ -424,7 +422,6 @@ export default function LeadDetailPage() {
     const paidFor = String(expensePaidForInput || "").trim();
     const paidTo = String(expensePaidToInput || "").trim();
     const description = String(expenseDescriptionInput || "").trim();
-    const expenceLinkInputTrim = String(expenseLinkInput || "").trim();
     if (!paidFor) {
       setActionError("Paid for is required.");
       return;
@@ -433,8 +430,8 @@ export default function LeadDetailPage() {
       setActionError("Paid to is required.");
       return;
     }
-    if (!expenseFile && !expenceLinkInputTrim) {
-      setActionError("Add a proof link, or upload a file — we’ll attach the OneDrive share link automatically.");
+    if (!expenseFile) {
+      setActionError("Upload a receipt or invoice file — we’ll save a OneDrive share link as proof automatically.");
       return;
     }
 
@@ -442,30 +439,27 @@ export default function LeadDetailPage() {
     setActionError(null);
     setActionOk(null);
     try {
-      let uploadData = {};
-      if (expenseFile) {
-        const form = new FormData();
-        form.append("file", expenseFile);
-        form.append("subfolder", "invoice");
-        form.append("leadName", lead.brand || lead.activity || `Lead-${lead.id}`);
-        const uploadRes = await fetch(`/api/leads/${lead.id}/upload`, {
-          method: "POST",
-          body: form,
-        });
-        uploadData = await uploadRes.json().catch(() => ({}));
-        if (!uploadRes.ok) {
-          throw new Error(uploadData?.error || "File upload failed.");
-        }
+      const form = new FormData();
+      form.append("file", expenseFile);
+      form.append("subfolder", "invoice");
+      form.append("leadName", lead.brand || lead.activity || `Lead-${lead.id}`);
+      const uploadRes = await fetch(`/api/leads/${lead.id}/upload`, {
+        method: "POST",
+        body: form,
+      });
+      const uploadData = await uploadRes.json().catch(() => ({}));
+      if (!uploadRes.ok) {
+        throw new Error(uploadData?.error || "File upload failed.");
       }
 
       const fromUpload =
         typeof uploadData?.fileWebUrl === "string" ? uploadData.fileWebUrl.trim() : "";
-      const expenceLink = fromUpload || expenceLinkInputTrim;
-      if (!expenceLink) {
+      if (!fromUpload) {
         throw new Error(
-          "Could not get a link for the uploaded file. Paste a proof URL, or check OneDrive / Graph permissions (createLink)."
+          "Could not get a link for the uploaded file. Check OneDrive / Graph permissions (createLink)."
         );
       }
+      const expenceLink = fromUpload;
 
       const today = new Date().toISOString().slice(0, 10);
       const summaryParts = [
@@ -510,9 +504,7 @@ export default function LeadDetailPage() {
 
       setShowAddExpenseModal(false);
       setActionOk(
-        expenseFile
-          ? "Expense saved with OneDrive proof link, timeline updated, and file in the invoice folder."
-          : "Expense saved and timeline updated."
+        "Expense saved with OneDrive proof link, timeline updated, and file in the invoice folder."
       );
       await loadLead();
     } catch (err) {
@@ -1691,7 +1683,7 @@ export default function LeadDetailPage() {
                   />
                 </label>
                 <label className="block text-sm sm:col-span-2">
-                  <span className="font-semibold text-slate-800">Attachment (optional)</span>
+                  <span className="font-semibold text-slate-800">Receipt or invoice (required)</span>
                   <input
                     type="file"
                     onChange={(e) => setExpenseFile(e.target.files?.[0] || null)}
@@ -1700,21 +1692,7 @@ export default function LeadDetailPage() {
                   <p className="mt-1.5 text-xs text-slate-500">
                     Uploads to the lead&apos;s <span className="font-semibold text-slate-700">invoice</span> folder. On
                     success, a <span className="font-semibold text-slate-700">OneDrive share link</span> is saved as
-                    proof automatically — you can leave the field below empty.
-                  </p>
-                </label>
-                <label className="block text-sm sm:col-span-2">
-                  <span className="font-semibold text-slate-800">Proof link (optional if you upload)</span>
-                  <input
-                    type="url"
-                    value={expenseLinkInput}
-                    onChange={(e) => setExpenseLinkInput(e.target.value)}
-                    placeholder="https://… or leave empty when uploading"
-                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-500/15"
-                  />
-                  <p className="mt-1.5 text-xs text-slate-500">
-                    Paste your own receipt URL if you prefer; otherwise the file upload link is used for{" "}
-                    <span className="font-mono text-[11px]">expence_link</span>.
+                    proof automatically.
                   </p>
                 </label>
                 <label className="block text-sm">
