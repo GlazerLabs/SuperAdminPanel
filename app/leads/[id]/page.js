@@ -817,7 +817,9 @@ export default function LeadDetailPage() {
               <div className="min-w-0">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">Expense forecast</p>
                 <p className="mt-1 text-xl font-bold tabular-nums tracking-tight text-white sm:text-2xl">{formatMoney(expenseNow)}</p>
-                <p className="mt-0.5 text-[11px] text-white/45">From latest follow-up or record</p>
+                <p className="mt-0.5 whitespace-nowrap text-[11px] text-white/45">
+                  From latest follow-up or record
+                </p>
               </div>
               <button
                 type="button"
