@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { getApi, patchApi, putApi } from "@/api";
@@ -343,6 +343,8 @@ export default function LeadDetailPage() {
   const [expenseDescriptionInput, setExpenseDescriptionInput] = useState("");
   const [expenseFile, setExpenseFile] = useState(null);
   const [savingExpenseEntry, setSavingExpenseEntry] = useState(false);
+  const [uploadingOtherFiles, setUploadingOtherFiles] = useState(false);
+  const uploadOthersInputRef = useRef(null);
 
   const [overviewForm, setOverviewForm] = useState(emptyOverviewForm);
 
@@ -654,7 +656,49 @@ export default function LeadDetailPage() {
   };
 
   const handleUploadFolderClick = () => {
-    // Placeholder for upcoming folder-upload flow.
+    if (uploadingOtherFiles) return;
+    uploadOthersInputRef.current?.click();
+  };
+
+  const handleUploadOthersFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (!lead?.id || files.length === 0) return;
+
+    setUploadingOtherFiles(true);
+    setActionError(null);
+    setActionOk(null);
+    try {
+      const leadName = lead.brand || lead.activity || `Lead-${lead.id}`;
+      const failed = [];
+
+      for (const file of files) {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("subfolder", "Others");
+        form.append("leadName", leadName);
+        const res = await fetch(`/api/leads/${lead.id}/upload`, {
+          method: "POST",
+          body: form,
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          failed.push(data?.error || file.name);
+        }
+      }
+
+      if (failed.length > 0) {
+        throw new Error(`Some files could not be uploaded: ${failed.join(", ")}`);
+      }
+
+      setActionOk(
+        `${files.length} file${files.length > 1 ? "s" : ""} uploaded to OneDrive Others folder.`
+      );
+    } catch (err) {
+      setActionError(err?.message || "Could not upload files to Others folder.");
+    } finally {
+      setUploadingOtherFiles(false);
+    }
   };
 
   if (loading) {
@@ -1032,12 +1076,20 @@ export default function LeadDetailPage() {
               Upload directly into OneDrive subfolders for this lead.
             </p>
             <div className="mt-4">
+              <input
+                ref={uploadOthersInputRef}
+                type="file"
+                multiple
+                onChange={handleUploadOthersFiles}
+                className="hidden"
+              />
               <button
                 type="button"
                 onClick={handleUploadFolderClick}
-                className="inline-flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                disabled={uploadingOtherFiles}
+                className="inline-flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Upload Folder
+                {uploadingOtherFiles ? "Uploading..." : "Upload Folder"}
               </button>
             </div>
           </div>
