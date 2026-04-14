@@ -812,9 +812,9 @@ export default function LeadDetailPage() {
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/60">Commercial</p>
           <p className="mt-3 text-3xl font-bold tabular-nums">{formatMoney(valueNow)}</p>
           <p className="mt-1 text-sm text-white/75">Expected revenue</p>
-          <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur-sm">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div className="min-w-0">
+          <div className="mt-5 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur-sm [-webkit-overflow-scrolling:touch]">
+            <div className="flex flex-nowrap items-end justify-between gap-3 sm:gap-4">
+              <div className="shrink-0">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">Expense forecast</p>
                 <p className="mt-1 text-xl font-bold tabular-nums tracking-tight text-white sm:text-2xl">{formatMoney(expenseNow)}</p>
                 <p className="mt-0.5 whitespace-nowrap text-[11px] text-white/45">
