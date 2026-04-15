@@ -10,7 +10,7 @@ import { useMembersAnalyticsList } from "@/hooks/useMembersAnalyticsList";
 import {
   createOrganizerTeamMember,
   deleteOrganizerTeamMember,
-  updateOrganizerTeamMember,
+  updateMemberUserDetails,
 } from "@/api";
 
 function getErrorMessage(err) {
@@ -65,14 +65,15 @@ export default function MembersOrganizersPage() {
 
   const handleEditSubmit = async (values) => {
     if (!editRow) return;
-    const id = Number(editRow.id);
-    if (!Number.isFinite(id)) throw new Error("Invalid member id.");
-    await updateOrganizerTeamMember({
-      id,
-      username: values.username,
+    const userId = Number(editRow.id);
+    if (!Number.isFinite(userId)) throw new Error("Invalid member id.");
+    await updateMemberUserDetails(userId, {
       email: values.email,
+      username: values.username || editRow.username || undefined,
+      mobile: values.mobile || editRow.contact || undefined,
       full_name: values.name,
-      profile_pic_url: values.profilePicUrl || undefined,
+      profile_pic_url: values.profilePicUrl || editRow.avatar || undefined,
+      is_active: 1,
     });
     setEditRow(null);
     bump();
@@ -126,6 +127,8 @@ export default function MembersOrganizersPage() {
           setPage(1);
         }}
         tableLoading={tableLoading}
+        showIngameColumns={false}
+        showOwnerColumn
       />
 
       <AddEditMemberModal

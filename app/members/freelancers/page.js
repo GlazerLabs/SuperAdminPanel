@@ -5,6 +5,7 @@ import MembersTable from "@/components/Members/MembersTable";
 import MembersStatsCards from "@/components/Members/MembersStatsCards";
 import AddEditMemberModal from "@/components/Members/AddEditMemberModal";
 import DeleteConfirmModal from "@/components/Members/DeleteConfirmModal";
+import { deleteMemberUser, updateMemberUserDetails } from "@/api";
 import { useMembersAnalyticsList } from "@/hooks/useMembersAnalyticsList";
 
 const ANALYTICS_ROLE = "freelancer";
@@ -21,6 +22,7 @@ export default function MembersFreelancersPage() {
     stats,
     statsLoading,
     tableLoading,
+    bump,
     totalDeltaPercent,
   } = useMembersAnalyticsList({
     analyticsRoleSlug: ANALYTICS_ROLE,
@@ -32,22 +34,63 @@ export default function MembersFreelancersPage() {
   }, [apiData]);
 
   const [editRow, setEditRow] = useState(null);
-  const [deleteRow, setDeleteRow] = useState(null);
+  const [deleteRows, setDeleteRows] = useState([]);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
-  const handleEditSubmit = (values) => {
+  const handleEditSubmit = async (values) => {
     if (!editRow) return;
-    setRows((prev) =>
-      prev.map((r) =>
-        r.id === editRow.id ? { ...r, name: values.name, email: values.email } : r
-      )
-    );
+    const userId = Number(editRow.id);
+    if (!Number.isFinite(userId)) throw new Error("Invalid user id.");
+    await updateMemberUserDetails(userId, {
+      email: values.email,
+      username: values.username || editRow.username || undefined,
+      mobile: values.mobile || editRow.contact || undefined,
+      full_name: values.name,
+      profile_pic_url: values.profilePicUrl || editRow.avatar || undefined,
+      is_active: 1,
+    });
     setEditRow(null);
+    bump();
   };
 
-  const handleDeleteConfirm = () => {
-    if (!deleteRow) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteRow.id));
-    setDeleteRow(null);
+  const handleDeleteConfirm = async () => {
+    if (deleteRows.length === 0) return;
+    const userIds = deleteRows
+      .map((row) => Number(row?.id))
+      .filter((id) => Number.isFinite(id));
+
+    if (userIds.length !== deleteRows.length) {
+      setDeleteError("Some selected users have invalid IDs. Please refresh and try again.");
+      return;
+    }
+
+    setDeleteLoading(true);
+    setDeleteError("");
+    try {
+      await Promise.all(
+        userIds.map(async (userId) => {
+          const response = await deleteMemberUser(userId);
+          if (response?.status === 0) {
+            throw new Error(response?.message || "Failed to delete one or more users.");
+          }
+        })
+      );
+
+      const deletedIdSet = new Set(userIds);
+      setRows((prev) => prev.filter((r) => !deletedIdSet.has(Number(r.id))));
+      setDeleteRows([]);
+      bump();
+    } catch (error) {
+      const message =
+        error?.message ||
+        error?.error ||
+        error?.data?.message ||
+        "Unable to delete selected users. Please try again.";
+      setDeleteError(String(message));
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   return (
@@ -71,7 +114,14 @@ export default function MembersFreelancersPage() {
         data={rows}
         title="Freelancer"
         onEdit={setEditRow}
-        onDelete={setDeleteRow}
+        onDelete={(row) => {
+          setDeleteError("");
+          setDeleteRows([row]);
+        }}
+        onBulkDelete={(selectedRows) => {
+          setDeleteError("");
+          setDeleteRows(selectedRows);
+        }}
         remoteTotal={remoteTotal}
         page={page}
         onPageChange={setPage}
@@ -83,21 +133,43 @@ export default function MembersFreelancersPage() {
           setPage(1);
         }}
         tableLoading={tableLoading}
+        showIngameColumns={false}
+        showOwnerColumn
       />
 
       <AddEditMemberModal
         open={Boolean(editRow)}
         title="Edit Freelancer"
-        initialValues={editRow ? { name: editRow.name, email: editRow.email } : null}
+        initialValues={
+          editRow
+            ? {
+                name: editRow.name,
+                email: editRow.email,
+                username: editRow.username,
+                mobile: editRow.contact,
+                profilePicUrl: editRow.avatar ?? "",
+              }
+            : null
+        }
         onClose={() => setEditRow(null)}
         onSubmit={handleEditSubmit}
       />
 
       <DeleteConfirmModal
-        open={Boolean(deleteRow)}
-        itemName={deleteRow?.name ?? ""}
+        open={deleteRows.length > 0}
+        itemName={
+          deleteRows.length === 1
+            ? deleteRows[0]?.name ?? ""
+            : `${deleteRows.length} selected members`
+        }
         onConfirm={handleDeleteConfirm}
-        onCancel={() => setDeleteRow(null)}
+        onCancel={() => {
+          if (deleteLoading) return;
+          setDeleteRows([]);
+          setDeleteError("");
+        }}
+        loading={deleteLoading}
+        errorMessage={deleteError}
       />
     </>
   );

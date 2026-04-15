@@ -74,21 +74,27 @@ export const postApi = async (endpoint, data) => {
 
   const { token } = useAuthStore.getState();
 
-  console.log("url", url);
-
   try {
-    const headers = {
-      "Content-Type": "application/json",
-    };
+    const isFormData =
+      typeof FormData !== "undefined" && data instanceof FormData;
+    const headers = {};
+
+    if (!isFormData) {
+      headers["Content-Type"] = "application/json";
+    }
 
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
 
-    const response = await axios.post(url, sanitizePayload(data) ?? {}, {
+    const response = await axios.post(
+      url,
+      isFormData ? data : sanitizePayload(data) ?? {},
+      {
       headers,
       withCredentials: true,
-    });
+      }
+    );
 
     return response.data;
   } catch (error) {
@@ -258,6 +264,7 @@ export const mapAnalyticsUserToMemberRow = (raw) => {
       null,
     ingameId:
       raw.ingame_id ?? raw.ingameId ?? raw.thryl_id ?? raw.game_user_id ?? null,
+    ownerName: raw.owner_name ?? raw.ownerName ?? null,
     _raw: raw,
   };
 };
@@ -357,6 +364,18 @@ export const deleteOrganizerTeamMember = (payload) =>
 
 export const deleteMemberUser = (userId) =>
   deleteApi("super-admin/delete-user", { userId: Number(userId) });
+
+export const updateMemberUserDetails = (userId, payload = {}) =>
+  putApi(`super-admin/update-user-details?userId=${encodeURIComponent(String(userId))}`, payload);
+
+export const uploadImage = async (file, type = "user") => {
+  if (!file) throw new Error("File is required");
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("type", type);
+  const response = await postApi("storage/upload", formData);
+  return response?.data?.[0]?.url || response?.data?.url || response?.url || null;
+};
 
 /**
  * Fetch user type counts for dashboard stats.

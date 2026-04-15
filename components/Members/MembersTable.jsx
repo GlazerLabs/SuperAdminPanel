@@ -45,6 +45,9 @@ export default function MembersTable({
   title = "Members",
   onEdit,
   onDelete,
+  onBulkDelete,
+  showIngameColumns = true,
+  showOwnerColumn = false,
   /** When set, pagination uses server totals and `data` is one page of rows */
   remoteTotal = null,
   page: serverPage,
@@ -144,6 +147,15 @@ export default function MembersTable({
 
   const allSelected = pageData.length > 0 && selectedIds.size === pageData.length;
 
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visibleIds = new Set(pageData.map((row) => row.id));
+      const next = new Set([...prev].filter((id) => visibleIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [pageData]);
+
   return (
     <div className="table-fade-in rounded-2xl bg-white shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 overflow-hidden">
       {/* Top: entries selector */}
@@ -185,9 +197,25 @@ export default function MembersTable({
             </div>
           )}
         </div>
-        {tableLoading && (
-          <span className="text-sm font-medium text-indigo-600">Loading…</span>
-        )}
+        <div className="flex items-center gap-2">
+          {selectedIds.size > 0 && typeof onBulkDelete === "function" && (
+            <button
+              type="button"
+              onClick={() => {
+                const selectedRows = pageData.filter((row) => selectedIds.has(row.id));
+                if (selectedRows.length === 0) return;
+                onBulkDelete(selectedRows);
+              }}
+              disabled={tableLoading}
+              className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Delete selected ({selectedIds.size})
+            </button>
+          )}
+          {tableLoading && (
+            <span className="text-sm font-medium text-indigo-600">Loading…</span>
+          )}
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -211,12 +239,21 @@ export default function MembersTable({
               <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">
                 <span className="inline-flex items-center">Email {<SortIcon />}</span>
               </th>
-              <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">
-                <span className="inline-flex items-center">Ingame name {<SortIcon />}</span>
-              </th>
-              <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">
-                <span className="inline-flex items-center">Ingame Id {<SortIcon />}</span>
-              </th>
+              {showIngameColumns && (
+                <>
+                  <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">
+                    <span className="inline-flex items-center">Ingame name {<SortIcon />}</span>
+                  </th>
+                  <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">
+                    <span className="inline-flex items-center">Ingame Id {<SortIcon />}</span>
+                  </th>
+                </>
+              )}
+              {showOwnerColumn && (
+                <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">
+                  <span className="inline-flex items-center">Owner name {<SortIcon />}</span>
+                </th>
+              )}
               <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Action</th>
             </tr>
           </thead>
@@ -246,8 +283,15 @@ export default function MembersTable({
                 </td>
                 <td className="px-4 py-3 text-sm text-slate-700">{row.contact}</td>
                 <td className="px-4 py-3 text-sm text-slate-700">{row.email}</td>
-                <td className="px-4 py-3 text-sm text-slate-700">{row.ingameName ?? "—"}</td>
-                <td className="px-4 py-3 text-sm text-slate-700">{row.ingameId ?? "—"}</td>
+                {showIngameColumns && (
+                  <>
+                    <td className="px-4 py-3 text-sm text-slate-700">{row.ingameName ?? "—"}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700">{row.ingameId ?? "—"}</td>
+                  </>
+                )}
+                {showOwnerColumn && (
+                  <td className="px-4 py-3 text-sm text-slate-700">{row.ownerName ?? "—"}</td>
+                )}
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <button

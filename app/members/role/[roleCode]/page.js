@@ -6,6 +6,7 @@ import MembersTable from "@/components/Members/MembersTable";
 import MembersStatsCards from "@/components/Members/MembersStatsCards";
 import AddEditMemberModal from "@/components/Members/AddEditMemberModal";
 import DeleteConfirmModal from "@/components/Members/DeleteConfirmModal";
+import { updateMemberUserDetails } from "@/api";
 import { useMembersTabs } from "@/contexts/MembersTabsContext";
 import { useMembersAnalyticsList } from "@/hooks/useMembersAnalyticsList";
 import { displayLabelForRole } from "@/lib/membersRoleAnalytics";
@@ -22,6 +23,7 @@ function MembersDynamicRoleInner({ analyticsSlug, label }) {
     stats,
     statsLoading,
     tableLoading,
+    bump,
     totalDeltaPercent,
   } = useMembersAnalyticsList({
     analyticsRoleSlug: analyticsSlug,
@@ -35,14 +37,20 @@ function MembersDynamicRoleInner({ analyticsSlug, label }) {
   const [editRow, setEditRow] = useState(null);
   const [deleteRow, setDeleteRow] = useState(null);
 
-  const handleEditSubmit = (values) => {
+  const handleEditSubmit = async (values) => {
     if (!editRow) return;
-    setRows((prev) =>
-      prev.map((r) =>
-        r.id === editRow.id ? { ...r, name: values.name, email: values.email } : r
-      )
-    );
+    const userId = Number(editRow.id);
+    if (!Number.isFinite(userId)) throw new Error("Invalid user id.");
+    await updateMemberUserDetails(userId, {
+      email: values.email,
+      username: values.username || editRow.username || undefined,
+      mobile: values.mobile || editRow.contact || undefined,
+      full_name: values.name,
+      profile_pic_url: values.profilePicUrl || editRow.avatar || undefined,
+      is_active: 1,
+    });
     setEditRow(null);
+    bump();
   };
 
   const handleDeleteConfirm = () => {
@@ -84,12 +92,24 @@ function MembersDynamicRoleInner({ analyticsSlug, label }) {
           setPage(1);
         }}
         tableLoading={tableLoading}
+        showIngameColumns={analyticsSlug === "player"}
+        showOwnerColumn={analyticsSlug !== "player"}
       />
 
       <AddEditMemberModal
         open={Boolean(editRow)}
         title={`Edit ${label}`}
-        initialValues={editRow ? { name: editRow.name, email: editRow.email } : null}
+        initialValues={
+          editRow
+            ? {
+                name: editRow.name,
+                email: editRow.email,
+                username: editRow.username,
+                mobile: editRow.contact,
+                profilePicUrl: editRow.avatar ?? "",
+              }
+            : null
+        }
         onClose={() => setEditRow(null)}
         onSubmit={handleEditSubmit}
       />

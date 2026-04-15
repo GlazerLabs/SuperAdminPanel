@@ -18,9 +18,9 @@ const ALL_PRIMARY_NAV = [
   { label: "Dashboard", href: "/", icon: "grid" },
   { label: "Members", href: "/members", icon: "org", matchPrefix: true },
   { label: "Role Management", href: "/roles", icon: "shield", matchPrefix: true },
-  { label: "Tournaments", href: "/tournaments", icon: "trophy" },
+  // { label: "Tournaments", href: "/tournaments", icon: "trophy" },
   { label: "Lead Tracking", href: "/leads", icon: "activity", matchPrefix: true },
-  { label: "Activity Logs", href: "/tracking", icon: "activity" },
+  { label: "Activity Logs", href: "/tracking", icon: "logs" },
 ];
 
 const formatModuleLabel = (moduleKey = "") => {
@@ -64,6 +64,13 @@ function NavIcon({ type, active }) {
       return (
         <svg viewBox="0 0 24 24" className={base} fill="none" aria-hidden="true">
           <path d="M4 12h4l2 6 4-12 2 6h4" />
+        </svg>
+      );
+    case "logs":
+      return (
+        <svg viewBox="0 0 24 24" className={base} fill="none" aria-hidden="true">
+          <rect x="4" y="5" width="16" height="14" rx="2" />
+          <path d="M8 9h8M8 12h8M8 15h5" />
         </svg>
       );
     case "trophy":
