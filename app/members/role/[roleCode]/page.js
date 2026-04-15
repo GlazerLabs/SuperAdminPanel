@@ -6,7 +6,7 @@ import MembersTable from "@/components/Members/MembersTable";
 import MembersStatsCards from "@/components/Members/MembersStatsCards";
 import AddEditMemberModal from "@/components/Members/AddEditMemberModal";
 import DeleteConfirmModal from "@/components/Members/DeleteConfirmModal";
-import { updateMemberUserDetails } from "@/api";
+import { deleteMemberUser, updateMemberUserDetails } from "@/api";
 import { useMembersTabs } from "@/contexts/MembersTabsContext";
 import { useMembersAnalyticsList } from "@/hooks/useMembersAnalyticsList";
 import { displayLabelForRole } from "@/lib/membersRoleAnalytics";
@@ -36,6 +36,8 @@ function MembersDynamicRoleInner({ analyticsSlug, label }) {
 
   const [editRow, setEditRow] = useState(null);
   const [deleteRow, setDeleteRow] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const handleEditSubmit = async (values) => {
     if (!editRow) return;
@@ -53,10 +55,33 @@ function MembersDynamicRoleInner({ analyticsSlug, label }) {
     bump();
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!deleteRow) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteRow.id));
-    setDeleteRow(null);
+    const userId = Number(deleteRow.id);
+    if (!Number.isFinite(userId)) {
+      setDeleteError("Invalid user id. Please refresh and try again.");
+      return;
+    }
+
+    setDeleteLoading(true);
+    setDeleteError("");
+    try {
+      const response = await deleteMemberUser(userId);
+      if (response?.status === 0) {
+        throw new Error(response?.message || "Failed to delete user.");
+      }
+      setDeleteRow(null);
+      bump();
+    } catch (error) {
+      const message =
+        error?.message ||
+        error?.error ||
+        error?.data?.message ||
+        "Unable to delete user. Please try again.";
+      setDeleteError(String(message));
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   return (
@@ -80,7 +105,10 @@ function MembersDynamicRoleInner({ analyticsSlug, label }) {
         data={rows}
         title={label}
         onEdit={setEditRow}
-        onDelete={setDeleteRow}
+        onDelete={(row) => {
+          setDeleteError("");
+          setDeleteRow(row);
+        }}
         remoteTotal={remoteTotal}
         page={page}
         onPageChange={setPage}
@@ -118,7 +146,13 @@ function MembersDynamicRoleInner({ analyticsSlug, label }) {
         open={Boolean(deleteRow)}
         itemName={deleteRow?.name ?? ""}
         onConfirm={handleDeleteConfirm}
-        onCancel={() => setDeleteRow(null)}
+        onCancel={() => {
+          if (deleteLoading) return;
+          setDeleteRow(null);
+          setDeleteError("");
+        }}
+        loading={deleteLoading}
+        errorMessage={deleteError}
       />
     </>
   );

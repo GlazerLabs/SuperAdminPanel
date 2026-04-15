@@ -5,6 +5,17 @@ function clampPercent(n) {
   return Math.max(0, Math.min(999, Math.round(n)));
 }
 
+function formatCompactIndian(n) {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return "0";
+  const abs = Math.abs(num);
+
+  if (abs >= 10000000) return `${(num / 10000000).toFixed(2)}Cr`;
+  if (abs >= 100000) return `${(num / 100000).toFixed(2)}L`;
+  if (abs >= 1000) return `${(num / 1000).toFixed(2)}K`;
+  return `${Math.round(num)}`;
+}
+
 function StatCard({
   title,
   value,
@@ -118,7 +129,7 @@ export default function MembersStatsCards({
       <div className="card-fade-up h-full">
         <StatCard
           title={`Total ${label}`}
-          value={total}
+          value={formatCompactIndian(total)}
           deltaPercent={totalDelta}
           accent="indigo"
           icon="users"
@@ -127,7 +138,7 @@ export default function MembersStatsCards({
       <div className="card-fade-up h-full">
         <StatCard
           title={`Last week ${label}`}
-          value={lastWeek}
+          value={formatCompactIndian(lastWeek)}
           deltaPercent={weekDelta}
           accent="violet"
           icon="calendar"
@@ -136,7 +147,7 @@ export default function MembersStatsCards({
       <div className="card-fade-up h-full">
         <StatCard
           title={`Last month ${label}`}
-          value={lastMonth}
+          value={formatCompactIndian(lastMonth)}
           deltaPercent={monthDelta}
           accent="emerald"
           icon="calendar"

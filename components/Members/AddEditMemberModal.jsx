@@ -169,25 +169,23 @@ export default function AddEditMemberModal({
               placeholder="email@example.com"
             />
           </div>
-          {isOrganizer && (
-            <div>
-              <label
-                htmlFor="member-mobile"
-                className="block text-sm font-medium text-slate-700"
-              >
-                Mobile
-              </label>
-              <input
-                id="member-mobile"
-                type="tel"
-                value={mobile}
-                onChange={(e) => setMobile(e.target.value)}
-                required={!isEdit}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                placeholder="+1234567890"
-              />
-            </div>
-          )}
+          <div>
+            <label
+              htmlFor="member-mobile"
+              className="block text-sm font-medium text-slate-700"
+            >
+              Mobile
+            </label>
+            <input
+              id="member-mobile"
+              type="tel"
+              value={mobile}
+              onChange={(e) => setMobile(e.target.value)}
+              required={!isEdit}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              placeholder="+1234567890"
+            />
+          </div>
           <div>
             <label
               htmlFor="member-profile"
