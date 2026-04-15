@@ -9,7 +9,7 @@ import { useMembersWorkspace } from "@/contexts/MembersWorkspaceContext";
 import { useMembersAnalyticsList } from "@/hooks/useMembersAnalyticsList";
 import {
   createOrganizerTeamMember,
-  deleteOrganizerTeamMember,
+  deleteMemberUser,
   updateMemberUserDetails,
 } from "@/api";
 
@@ -46,6 +46,8 @@ export default function MembersOrganizersPage() {
 
   const [editRow, setEditRow] = useState(null);
   const [deleteRow, setDeleteRow] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     return registerAddSubmit(async (values) => {
@@ -79,19 +81,28 @@ export default function MembersOrganizersPage() {
     bump();
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!deleteRow) return;
-    void (async () => {
-      try {
-        const id = Number(deleteRow.id);
-        if (!Number.isFinite(id)) throw new Error("Invalid member id.");
-        await deleteOrganizerTeamMember({ id });
-        setDeleteRow(null);
-        bump();
-      } catch (err) {
-        window.alert(getErrorMessage(err));
+    const userId = Number(deleteRow.id);
+    if (!Number.isFinite(userId)) {
+      setDeleteError("Invalid user id. Please refresh and try again.");
+      return;
+    }
+
+    setDeleteLoading(true);
+    setDeleteError("");
+    try {
+      const response = await deleteMemberUser(userId);
+      if (response?.status === 0) {
+        throw new Error(response?.message || "Failed to delete member.");
       }
-    })();
+      setDeleteRow(null);
+      bump();
+    } catch (err) {
+      setDeleteError(getErrorMessage(err));
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   return (
@@ -115,7 +126,10 @@ export default function MembersOrganizersPage() {
         data={data}
         title="Organizer"
         onEdit={setEditRow}
-        onDelete={setDeleteRow}
+        onDelete={(row) => {
+          setDeleteError("");
+          setDeleteRow(row);
+        }}
         remoteTotal={remoteTotal}
         page={page}
         onPageChange={setPage}
@@ -154,7 +168,13 @@ export default function MembersOrganizersPage() {
         open={Boolean(deleteRow)}
         itemName={deleteRow?.name ?? ""}
         onConfirm={handleDeleteConfirm}
-        onCancel={() => setDeleteRow(null)}
+        onCancel={() => {
+          if (deleteLoading) return;
+          setDeleteRow(null);
+          setDeleteError("");
+        }}
+        loading={deleteLoading}
+        errorMessage={deleteError}
       />
     </>
   );
