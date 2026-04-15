@@ -160,9 +160,6 @@ export default function Sidebar() {
   const logout = useAuthStore((state) => state.logout);
   const myAccess = useModuleAccessStore((state) => state.myAccess);
 
-
-  console.log("myAccess", myAccess);
-
   const implicitFullAccess = !!myAccess?.data?.[0]?.implicit_full_access_frontend;
   const modules = myAccess?.data?.[0]?.frontend_modules || {};
   const primaryNav = implicitFullAccess

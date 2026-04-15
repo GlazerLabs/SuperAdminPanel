@@ -355,6 +355,9 @@ export const updateOrganizerTeamMember = (payload) =>
 export const deleteOrganizerTeamMember = (payload) =>
   deleteApi("organizer/delete-team", payload);
 
+export const deleteMemberUser = (userId) =>
+  deleteApi("super-admin/delete-user", { userId: Number(userId) });
+
 /**
  * Fetch user type counts for dashboard stats.
  * Uses a service token from env instead of the auth store token.

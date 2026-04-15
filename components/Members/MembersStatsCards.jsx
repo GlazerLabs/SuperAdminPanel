@@ -68,7 +68,7 @@ function StatCard({
   })();
 
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-white p-5 shadow-[0_14px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_rgba(15,23,42,0.09)]">
+    <div className="relative flex h-full overflow-hidden rounded-2xl bg-white p-5 shadow-[0_14px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_rgba(15,23,42,0.09)]">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <div
@@ -78,7 +78,7 @@ function StatCard({
             <span className="scale-105 sm:scale-110">{Icon}</span>
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-600 sm:text-base">
+            <p className="min-h-10 text-sm font-medium leading-5 text-slate-600 sm:text-base">
               {title}
             </p>
             <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
@@ -114,8 +114,8 @@ export default function MembersStatsCards({
       : 12;
 
   return (
-    <section className="mb-6 grid gap-4 sm:grid-cols-3">
-      <div className="card-fade-up">
+    <section className="mb-6 grid items-stretch gap-4 sm:grid-cols-3">
+      <div className="card-fade-up h-full">
         <StatCard
           title={`Total ${label}`}
           value={total}
@@ -124,7 +124,7 @@ export default function MembersStatsCards({
           icon="users"
         />
       </div>
-      <div className="card-fade-up">
+      <div className="card-fade-up h-full">
         <StatCard
           title={`Last week ${label}`}
           value={lastWeek}
@@ -133,7 +133,7 @@ export default function MembersStatsCards({
           icon="calendar"
         />
       </div>
-      <div className="card-fade-up">
+      <div className="card-fade-up h-full">
         <StatCard
           title={`Last month ${label}`}
           value={lastMonth}

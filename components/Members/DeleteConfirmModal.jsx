@@ -5,6 +5,8 @@ export default function DeleteConfirmModal({
   itemName,
   onConfirm,
   onCancel,
+  loading = false,
+  errorMessage = "",
 }) {
   if (!open) return null;
 
@@ -27,20 +29,27 @@ export default function DeleteConfirmModal({
         <p className="mt-2 text-sm text-slate-600">
           Are you sure you want to delete <strong>{itemName}</strong>? This action cannot be undone.
         </p>
+        {errorMessage ? (
+          <p className="mt-3 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            {errorMessage}
+          </p>
+        ) : null}
         <div className="mt-6 flex gap-3">
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            disabled={loading}
+            className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="flex-1 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-rose-700"
+            disabled={loading}
+            className="flex-1 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            Delete
+            {loading ? "Deleting..." : "Delete"}
           </button>
         </div>
       </div>

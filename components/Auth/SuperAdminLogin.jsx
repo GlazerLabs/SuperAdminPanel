@@ -7,30 +7,7 @@ import Button from "../ui/Button";
 import { fetchFrontendMyAccess, postApi, readProfile } from "@/api";
 import { useAuthStore } from "@/zustand/auth";
 import { useModuleAccessStore } from "@/zustand/moduleAccess";
-
-const MODULE_ROUTE_MAP = {
-  super_lead_tracking: "/leads",
-};
-
-const MODULE_ROUTE_ORDER = ["super_lead_tracking"];
-
-const getFirstAllowedRoute = (myAccessResponse) => {
-  const accessData = myAccessResponse?.data?.[0];
-  if (!accessData) return "/";
-
-  if (accessData?.implicit_full_access_frontend) {
-    return "/";
-  }
-
-  const modules = accessData?.frontend_modules || {};
-  for (const moduleKey of MODULE_ROUTE_ORDER) {
-    if (modules?.[moduleKey]?.read && MODULE_ROUTE_MAP[moduleKey]) {
-      return MODULE_ROUTE_MAP[moduleKey];
-    }
-  }
-
-  return "/";
-};
+import { getFirstAllowedRoute } from "@/lib/frontendAccess";
 
 function IconMail(props) {
   return (

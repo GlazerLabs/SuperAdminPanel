@@ -1,13 +1,16 @@
 "use client";
 
+import { useEffect } from "react";
 import { Outfit } from "next/font/google";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import "./globals.css";
 import { useAuthStore } from "@/zustand/auth";
+import { useModuleAccessStore } from "@/zustand/moduleAccess";
 import SuperAdminLogin from "@/components/Auth/SuperAdminLogin";
 import Sidebar from "@/components/Main/Sidebar";
 import AppHeader from "@/components/layout/AppHeader";
 import AppLoader from "@/components/ui/loader/AppLoader";
+import { getFirstAllowedRoute } from "@/lib/frontendAccess";
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -17,9 +20,22 @@ const outfit = Outfit({
 
 export default function RootLayout({ children }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { loggedIn, hasHydrated } = useAuthStore();
+  const myAccess = useModuleAccessStore((state) => state.myAccess);
 
   const isLoginRoute = pathname === "/login";
+
+  useEffect(() => {
+    if (!hasHydrated || !loggedIn) return;
+    if (pathname !== "/") return;
+    if (!myAccess) return;
+
+    const firstAllowedRoute = getFirstAllowedRoute(myAccess);
+    if (firstAllowedRoute && firstAllowedRoute !== "/") {
+      router.replace(firstAllowedRoute);
+    }
+  }, [hasHydrated, loggedIn, myAccess, pathname, router]);
 
   return (
     <html lang="en">

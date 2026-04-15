@@ -5,6 +5,7 @@ import MembersTable from "@/components/Members/MembersTable";
 import MembersStatsCards from "@/components/Members/MembersStatsCards";
 import AddEditMemberModal from "@/components/Members/AddEditMemberModal";
 import DeleteConfirmModal from "@/components/Members/DeleteConfirmModal";
+import { deleteMemberUser } from "@/api";
 import { useMembersAnalyticsList } from "@/hooks/useMembersAnalyticsList";
 
 const ANALYTICS_ROLE = "super_admin";
@@ -21,6 +22,7 @@ export default function MembersSuperAdminPage() {
     stats,
     statsLoading,
     tableLoading,
+    bump,
     totalDeltaPercent,
   } = useMembersAnalyticsList({
     analyticsRoleSlug: ANALYTICS_ROLE,
@@ -33,6 +35,8 @@ export default function MembersSuperAdminPage() {
 
   const [editRow, setEditRow] = useState(null);
   const [deleteRow, setDeleteRow] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const handleEditSubmit = (values) => {
     if (!editRow) return;
@@ -44,10 +48,34 @@ export default function MembersSuperAdminPage() {
     setEditRow(null);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!deleteRow) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteRow.id));
-    setDeleteRow(null);
+    const userId = Number(deleteRow.id);
+    if (!Number.isFinite(userId)) {
+      setDeleteError("Invalid user id. Please refresh and try again.");
+      return;
+    }
+
+    setDeleteLoading(true);
+    setDeleteError("");
+    try {
+      const response = await deleteMemberUser(userId);
+      if (response?.status === 0) {
+        throw new Error(response?.message || "Failed to delete member.");
+      }
+      setRows((prev) => prev.filter((r) => Number(r.id) !== userId));
+      setDeleteRow(null);
+      bump();
+    } catch (error) {
+      const message =
+        error?.message ||
+        error?.error ||
+        error?.data?.message ||
+        "Unable to delete member. Please try again.";
+      setDeleteError(String(message));
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   return (
@@ -71,7 +99,10 @@ export default function MembersSuperAdminPage() {
         data={rows}
         title="Super Admin"
         onEdit={setEditRow}
-        onDelete={setDeleteRow}
+        onDelete={(row) => {
+          setDeleteError("");
+          setDeleteRow(row);
+        }}
         remoteTotal={remoteTotal}
         page={page}
         onPageChange={setPage}
@@ -97,7 +128,13 @@ export default function MembersSuperAdminPage() {
         open={Boolean(deleteRow)}
         itemName={deleteRow?.name ?? ""}
         onConfirm={handleDeleteConfirm}
-        onCancel={() => setDeleteRow(null)}
+        onCancel={() => {
+          if (deleteLoading) return;
+          setDeleteRow(null);
+          setDeleteError("");
+        }}
+        loading={deleteLoading}
+        errorMessage={deleteError}
       />
     </>
   );
