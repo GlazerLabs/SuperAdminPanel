@@ -36,6 +36,54 @@ function normalizeDeliverableTypes(row) {
   return [];
 }
 
+const KNOWN_DELIVERABLE_TYPES = new Set([
+  "Tournament / League",
+  "One-off Event",
+  "Influencer Campaign",
+  "Branding / Integration",
+  "Content Production",
+  "Community Activation",
+  "Other",
+]);
+
+function normalizeDeliverablesForForm(row) {
+  const all = normalizeDeliverableTypes(row);
+  const known = all.filter((item) => KNOWN_DELIVERABLE_TYPES.has(item));
+  const custom = all.filter((item) => item && !KNOWN_DELIVERABLE_TYPES.has(item));
+
+  if (custom.length && !known.includes("Other")) {
+    known.push("Other");
+  }
+
+  return {
+    deliverableTypes: known,
+    otherDeliverables: custom.length ? custom : [""],
+  };
+}
+
+const PAYMENT_TERMS_OPTIONS = new Set([
+  "Advance",
+  "Milestones",
+  "Post-completion",
+  "NET 15",
+  "NET 30",
+  "Custom",
+]);
+
+function normalizePaymentTermsForForm(row) {
+  const raw = pickText(row.paymentTerms, row.payment_terms);
+  if (!raw) {
+    return { paymentTerms: "", paymentTermsCustom: "" };
+  }
+  if (PAYMENT_TERMS_OPTIONS.has(raw)) {
+    return {
+      paymentTerms: raw,
+      paymentTermsCustom: raw === "Custom" ? pickText(row.paymentTermsCustom, row.payment_terms_custom) : "",
+    };
+  }
+  return { paymentTerms: "Custom", paymentTermsCustom: raw };
+}
+
 function normalizeContacts(row) {
   const raw = row.contacts ?? row.contacts_stakeholders ?? row.stakeholders;
   const fromArray = Array.isArray(raw)
@@ -82,6 +130,8 @@ function normalizeContacts(row) {
  */
 export function rowToInitialLead(row) {
   if (!row) return null;
+  const deliverables = normalizeDeliverablesForForm(row);
+  const paymentTermsState = normalizePaymentTermsForForm(row);
   return {
     brand: pickText(row.brand),
     activityName: pickText(row.activityName, row.activity),
@@ -107,7 +157,8 @@ export function rowToInitialLead(row) {
     agencyInvolved: pickText(row.agencyInvolved, row.agency_involved),
     preferredContactTime: pickText(row.preferredContactTime, row.preferred_contact_time),
     objective: pickText(row.objective, row.current_status_summary),
-    deliverableTypes: normalizeDeliverableTypes(row),
+    deliverableTypes: deliverables.deliverableTypes,
+    otherDeliverables: deliverables.otherDeliverables,
     activityDate: sliceDateIso(pickText(row.activityDate, row.expected_activity_date)),
     activityWindowFrom: sliceDateIso(pickText(row.activityWindowFrom, row.execution_window_from)),
     activityWindowTo: sliceDateIso(pickText(row.activityWindowTo, row.execution_window_to)),
@@ -128,7 +179,8 @@ export function rowToInitialLead(row) {
     expectedRevenueRange: pickText(row.expectedRevenueRange, row.expected_revenue_range),
     expectedRevenueNote: pickText(row.expectedRevenueNote, row.expected_revenue_note),
     expenseModel: pickText(row.expenseModel, row.expense_model),
-    paymentTerms: pickText(row.paymentTerms, row.payment_terms),
+    paymentTerms: paymentTermsState.paymentTerms,
+    paymentTermsCustom: paymentTermsState.paymentTermsCustom,
     gstApplicable: pickText(row.gstApplicable, row.gst_applicable) || "Yes",
     expectedExpenses: pickText(row.expectedExpenses, row.expected_expenses),
     revenueModel: pickText(row.revenueModel, row.revenue_model),

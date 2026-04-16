@@ -52,6 +52,30 @@ const DELIVERABLE_TYPES = [
   "Other",
 ];
 
+function toDateOnly(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  parsed.setHours(0, 0, 0, 0);
+  return parsed;
+}
+
+function toInputDate(value) {
+  const parsed = toDateOnly(value);
+  if (!parsed) return "";
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(value, days) {
+  const parsed = toDateOnly(value);
+  if (!parsed) return "";
+  parsed.setDate(parsed.getDate() + days);
+  return toInputDate(parsed);
+}
+
 const STEP_DEFINITIONS = [
   { id: 1, title: "Lead basics" },
   { id: 2, title: "Contacts & stakeholders" },
@@ -86,6 +110,7 @@ const INITIAL_LEAD = {
   preferredContactTime: "",
   objective: "",
   deliverableTypes: [],
+  otherDeliverables: [""],
   activityDate: "",
   activityWindowFrom: "",
   activityWindowTo: "",
@@ -105,6 +130,7 @@ const INITIAL_LEAD = {
   expectedRevenueNote: "",
   expenseModel: "",
   paymentTerms: "",
+  paymentTermsCustom: "",
   gstApplicable: "Yes",
   expectedExpenses: "",
   revenueModel: "",
@@ -274,6 +300,7 @@ function extractLeadIdFromCreateResponse(response) {
 export default function NewLeadPage() {
   const router = useRouter();
   const {
+    openLeadForm,
     selectedLead,
     closeLeadForm,
     leadFlowState,
@@ -294,6 +321,9 @@ export default function NewLeadPage() {
   const [workspaceTree, setWorkspaceTree] = useState(() => createDefaultWorkspace(""));
   const [activeFolderPath, setActiveFolderPath] = useState([]);
   const [showWorkspace, setShowWorkspace] = useState(false);
+  const [sowUploadFile, setSowUploadFile] = useState(null);
+  const [poUploadFile, setPoUploadFile] = useState(null);
+  const [proposalUploadFile, setProposalUploadFile] = useState(null);
   const imageInputRef = useRef(null);
   const requestLockRef = useRef(false);
 
@@ -305,6 +335,23 @@ export default function NewLeadPage() {
     [lead.currentStatus, lead.proposalSharedDate, lead.proposalLink]
   );
 
+  const parseLeadRowFromResponse = (json, targetId) => {
+    const rows = Array.isArray(json?.data)
+      ? json.data
+      : Array.isArray(json?.result)
+        ? json.result
+        : Array.isArray(json)
+          ? json
+          : [];
+    const normalizedTargetId = String(targetId || "").trim();
+    if (!normalizedTargetId) return rows[0] || null;
+    return (
+      rows.find((row) => String(row?.id || row?.lead_id || "").trim() === normalizedTargetId) ||
+      rows[0] ||
+      null
+    );
+  };
+
   useEffect(() => {
     if (!selectedLead) return;
     setLead(withNormalizedContacts(rowToInitialLead(selectedLead)));
@@ -312,6 +359,41 @@ export default function NewLeadPage() {
     setCurrentStep(Math.min(STEP_DEFINITIONS.length, Math.max(1, savedStep || 1)));
     setLastSyncedFolderName(selectedLead?.brand || selectedLead?.activity || "");
   }, [selectedLead]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLatestLeadForEdit() {
+      const leadId = selectedLead?.id;
+      if (!leadId) return;
+      try {
+        let latest = null;
+        try {
+          const byId = await getApi("lead-tracking", { id: leadId });
+          latest = parseLeadRowFromResponse(byId, leadId);
+        } catch {
+          latest = null;
+        }
+
+        if (!latest) {
+          const listJson = await getApi("lead-tracking", { page: 1, limit: 200 });
+          latest = parseLeadRowFromResponse(listJson, leadId);
+        }
+        if (!latest || cancelled) return;
+
+        openLeadForm(latest);
+        setLead(withNormalizedContacts(rowToInitialLead(latest)));
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error("Failed to refresh latest lead for edit form:", error);
+      }
+    }
+
+    loadLatestLeadForEdit();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedLead?.id, openLeadForm]);
 
   useEffect(() => {
     if (selectedLead) return;
@@ -393,6 +475,30 @@ export default function NewLeadPage() {
     });
   };
 
+  const handleOtherDeliverableChange = (index) => (e) => {
+    const value = e.target.value;
+    setLead((prev) => {
+      const next = [...(prev.otherDeliverables || [""])];
+      next[index] = value;
+      return { ...prev, otherDeliverables: next };
+    });
+  };
+
+  const handleAddOtherDeliverable = () => {
+    setLead((prev) => ({
+      ...prev,
+      otherDeliverables: [...(prev.otherDeliverables || [""]), ""],
+    }));
+  };
+
+  const handleRemoveOtherDeliverable = (index) => {
+    setLead((prev) => {
+      const current = prev.otherDeliverables || [""];
+      const next = current.filter((_, i) => i !== index);
+      return { ...prev, otherDeliverables: next.length ? next : [""] };
+    });
+  };
+
   const handleContactChange = (index, field) => (e) => {
     const value = e.target.value;
     setLead((prev) => {
@@ -450,7 +556,6 @@ export default function NewLeadPage() {
       if (!lead.activityName.trim()) nextErrors.activityName = "Activity / campaign name is required.";
       if (!lead.leadOwner.trim()) nextErrors.leadOwner = "Lead owner is required.";
       if (!lead.currentStatus) nextErrors.currentStatus = "Status is required.";
-      if (!lead.nextFollowUpDate) nextErrors.nextFollowUpDate = "Next follow-up is required.";
       if (!lead.nextStep.trim()) nextErrors.nextStep = "Next step is required.";
       if (!lead.primaryChannel) nextErrors.primaryChannel = "Channel is required.";
     } else if (currentStep === 2) {
@@ -479,11 +584,31 @@ export default function NewLeadPage() {
       if (!lead.deliverableTypes.length) {
         nextErrors.deliverableTypes = "Select at least one deliverable.";
       }
-      if (!lead.activityDate && !(lead.activityWindowFrom && lead.activityWindowTo)) {
-        nextErrors.activityDate = "Provide date or window.";
-      }
       if (!lead.geographyScope.trim()) {
         nextErrors.geographyScope = "Scope summary is required.";
+      }
+
+      if (lead.deliverableTypes.includes("Other")) {
+        const hasValidOther = (lead.otherDeliverables || []).some((item) => String(item || "").trim());
+        if (!hasValidOther) {
+          nextErrors.otherDeliverables = "Add at least one custom deliverable for Other.";
+        }
+      }
+
+      const closureDate = toDateOnly(lead.expectedClosureDate);
+      if (closureDate) {
+        const compareFields = [
+          { key: "activityDate", value: lead.activityDate, label: "Specific activity date" },
+          { key: "activityWindowFrom", value: lead.activityWindowFrom, label: "Window from" },
+          { key: "activityWindowTo", value: lead.activityWindowTo, label: "Window to" },
+        ];
+
+        compareFields.forEach(({ key, value, label }) => {
+          const dateValue = toDateOnly(value);
+          if (dateValue && dateValue <= closureDate) {
+            nextErrors[key] = `${label} must be after expected closure date.`;
+          }
+        });
       }
     } else if (currentStep === 4) {
       if (!lead.expectedRevenueType) nextErrors.expectedRevenueType = "Type is required.";
@@ -500,29 +625,40 @@ export default function NewLeadPage() {
       }
       if (!lead.expenseModel) nextErrors.expenseModel = "Expense model is required.";
       if (!lead.paymentTerms) nextErrors.paymentTerms = "Payment terms are required.";
+      if (
+        String(lead.paymentTerms || "").trim().toLowerCase() === "custom" &&
+        !String(lead.paymentTermsCustom || "").trim()
+      ) {
+        nextErrors.paymentTermsCustom = "Please enter custom payment terms.";
+      }
     }
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
 
-  const buildCreatePayload = () => ({
-    brand: lead.brand || "",
-    account_type: "New",
-    activity: lead.activityName || "",
-    mode: lead.mode || "",
-    activity_type: lead.activityType || "",
-    city_region: lead.cityRegion || "",
-    lead_source: lead.leadSource || "",
-    primary_channel: lead.primaryChannel || "",
-    lead_owner: lead.leadOwner || "",
-    stage: lead.currentStatus || "New",
-    current_status: lead.currentStatus || "New",
-    next_step: lead.nextStep || "",
-    next_follow_up_date: lead.nextFollowUpDate || "",
-    priority: lead.priority || "",
-    nextstep: 1,
-  });
+  const buildCreatePayload = () => {
+    const payload = {
+      brand: lead.brand || "",
+      account_type: "New",
+      activity: lead.activityName || "",
+      mode: lead.mode || "",
+      activity_type: lead.activityType || "",
+      city_region: lead.cityRegion || "",
+      lead_source: lead.leadSource || "",
+      primary_channel: lead.primaryChannel || "",
+      lead_owner: lead.leadOwner || "",
+      stage: lead.currentStatus || "New",
+      current_status: lead.currentStatus || "New",
+      next_step: lead.nextStep || "",
+      priority: lead.priority || "",
+      nextstep: 1,
+    };
+    if (String(lead.nextFollowUpDate || "").trim()) {
+      payload.next_follow_up_date = lead.nextFollowUpDate;
+    }
+    return payload;
+  };
 
   const buildStepTwoUpdatePayload = () => ({
     primary_contact: (lead.contacts || [])
@@ -541,23 +677,43 @@ export default function NewLeadPage() {
     nextstep: 2,
   });
 
-  const buildStepThreeUpdatePayload = () => ({
-    current_status_summary: lead.objective || "",
-    industry: lead.deliverableTypes.join(","),
-    scope_summary: lead.geographyScope || "",
-    expected_activity_date: lead.activityDate || "",
-    execution_window_from: lead.activityWindowFrom || "",
-    execution_window_to: lead.activityWindowTo || "",
-    dependencies: lead.dependencies || "",
-    risk_blockers: lead.riskBlockers || "",
-    expected_closure_date: lead.expectedClosureDate || "",
-    probability: lead.probability || "",
-    proposal_shared_date: lead.proposalSharedDate || "",
-    proporsal_shared_date: lead.proposalSharedDate || "",
-    nextstep: 3,
-  });
+  const buildStepThreeUpdatePayload = () => {
+    const payload = {
+      current_status_summary: lead.objective || "",
+      industry: [
+        ...lead.deliverableTypes.filter((item) => item !== "Other"),
+        ...(lead.deliverableTypes.includes("Other")
+          ? (lead.otherDeliverables || []).map((item) => String(item || "").trim()).filter(Boolean)
+          : []),
+      ].join(","),
+      scope_summary: lead.geographyScope || "",
+      dependencies: lead.dependencies || "",
+      risk_blockers: lead.riskBlockers || "",
+      probability: lead.probability || "",
+      nextstep: 3,
+    };
 
-  const buildStepFourUpdatePayload = () => {
+    if (String(lead.activityDate || "").trim()) {
+      payload.expected_activity_date = lead.activityDate;
+    }
+    if (String(lead.activityWindowFrom || "").trim()) {
+      payload.execution_window_from = lead.activityWindowFrom;
+    }
+    if (String(lead.activityWindowTo || "").trim()) {
+      payload.execution_window_to = lead.activityWindowTo;
+    }
+    if (String(lead.expectedClosureDate || "").trim()) {
+      payload.expected_closure_date = lead.expectedClosureDate;
+    }
+    if (String(lead.proposalSharedDate || "").trim()) {
+      payload.proposal_shared_date = lead.proposalSharedDate;
+      payload.proporsal_shared_date = lead.proposalSharedDate;
+    }
+
+    return payload;
+  };
+
+  const buildStepFourUpdatePayload = ({ sowAttachmentLink = "", poAttachmentLink = "" } = {}) => {
     const expectedRevenue =
       lead.expectedRevenueType === "value"
         ? parseIndianRupeeInput(lead.expectedRevenueValue) ?? 0
@@ -566,18 +722,24 @@ export default function NewLeadPage() {
     const grossMargin = expectedRevenue - expectedExpenses;
     const marginPercent =
       expectedRevenue > 0 ? Number(((grossMargin / expectedRevenue) * 100).toFixed(1)) : 0;
+    const resolvedPaymentTerms =
+      String(lead.paymentTerms || "").trim().toLowerCase() === "custom"
+        ? String(lead.paymentTermsCustom || "").trim()
+        : lead.paymentTerms || "";
     return {
       expected_revenue: expectedRevenue,
       expected_expenses: expectedExpenses,
       gross_margin: grossMargin,
       margin_percent: marginPercent,
-      payment_terms: lead.paymentTerms || "",
+      payment_terms: resolvedPaymentTerms,
       gst_applicable: lead.gstApplicable || "Yes",
       expense_model: lead.expenseModel || "",
       revenue_model: lead.revenueModel || "",
       proposal_link: lead.proposalLink || "",
       sow_status: lead.sowStatus || "",
       po_status: lead.poStatus || "",
+      ...(sowAttachmentLink ? { sow_attachment_link: sowAttachmentLink } : {}),
+      ...(poAttachmentLink ? { po_attachment_link: poAttachmentLink } : {}),
       nextstep: 4,
     };
   };
@@ -596,11 +758,14 @@ export default function NewLeadPage() {
       stage: lead.currentStatus || "New",
       current_status: lead.currentStatus || "New",
       next_step: lead.nextStep || "",
-      next_follow_up_date: lead.nextFollowUpDate || "",
       priority: lead.priority || "",
       proposal_link: lead.proposalLink || "",
       nextstep: 1,
     };
+
+    if (String(lead.nextFollowUpDate || "").trim()) {
+      payload.next_follow_up_date = lead.nextFollowUpDate;
+    }
 
     if (String(lead.proposalSharedDate || "").trim()) {
       payload.proposal_shared_date = lead.proposalSharedDate;
@@ -618,23 +783,115 @@ export default function NewLeadPage() {
     return { nextstep: stepNumber };
   };
 
-  const buildFinalPayload = () => ({
-    ...buildCreatePayload(),
-    ...buildStepTwoUpdatePayload(),
-    ...buildStepThreeUpdatePayload(),
-    ...buildStepFourUpdatePayload(),
-    nextstep: STEP_DEFINITIONS.length,
-  });
+  const uploadFileToSubfolder = async (leadId, file, subfolder = "Inwards") => {
+    if (!leadId || !file) return "";
+    const leadName = lead.brand || selectedLead?.brand || lead.activityName || selectedLead?.activity || `Lead-${leadId}`;
+    const form = new FormData();
+    form.append("file", file);
+    form.append("subfolder", subfolder);
+    form.append("leadName", leadName);
+
+    const uploadRes = await fetch(`/api/leads/${leadId}/upload`, {
+      method: "POST",
+      body: form,
+    });
+    const uploadData = await uploadRes.json().catch(() => ({}));
+    if (!uploadRes.ok) {
+      throw new Error(uploadData?.error || "File upload failed.");
+    }
+    return (
+      (typeof uploadData?.fileWebUrl === "string" && uploadData.fileWebUrl.trim()) ||
+      (typeof uploadData?.webUrl === "string" && uploadData.webUrl.trim()) ||
+      ""
+    );
+  };
+
+  const uploadProposalFileIfAny = async (leadId) => {
+    if (!leadId || !proposalUploadFile) return "";
+    return uploadFileToSubfolder(leadId, proposalUploadFile, "Inward");
+  };
+
+  const resolveCreatedLeadId = async (response) => {
+    let createdLeadId = extractLeadIdFromCreateResponse(response);
+    if (createdLeadId) return createdLeadId;
+
+    try {
+      const latestLeads = await getApi("lead-tracking", { page: 1, limit: 100 });
+      const rows = Array.isArray(latestLeads?.data) ? latestLeads.data : [];
+      const matched = rows.find(
+        (row) =>
+          String(row?.activity || "").trim() === String(lead.activityName || "").trim() &&
+          String(row?.brand || "").trim() === String(lead.brand || "").trim()
+      );
+      return matched?.id || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const createLeadFolderIfNeeded = async (createdLeadId) => {
+    if (!createdLeadId) return;
+    const createdFolderName = lead.brand || lead.activityName || `Lead-${createdLeadId}`;
+    const createResponse = await fetch(`/api/leads/${createdLeadId}/sync-folder`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "create",
+        leadName: createdFolderName,
+      }),
+    });
+    if (createResponse.ok) {
+      setLastSyncedFolderName(createdFolderName);
+    }
+  };
 
   const handleNext = async () => {
     if (!validateStep() || submitting || requestLockRef.current) return;
     requestLockRef.current = true;
     setSubmitting(true);
     try {
-      setLeadFlowState({
-        draft: lead,
-        nextstep: Math.min(STEP_DEFINITIONS.length, currentStep + 1),
-      });
+      if (!isEditMode) {
+        if (currentStep === 1) {
+          const createResponse = await postApi("lead-tracking", buildCreatePayload());
+          const createdLeadId = await resolveCreatedLeadId(createResponse);
+          const proposalLinkFromUpload = await uploadProposalFileIfAny(createdLeadId);
+          if (proposalLinkFromUpload) {
+            await putApi(`lead-tracking/${createdLeadId}`, {
+              ...buildStepOneUpdatePayload(),
+              proposal_link: proposalLinkFromUpload,
+            });
+            setLead((prev) => ({ ...prev, proposalLink: proposalLinkFromUpload }));
+            setProposalUploadFile(null);
+          }
+          await createLeadFolderIfNeeded(createdLeadId);
+          setLeadFlowState({
+            lastResponse: createResponse,
+            draft: lead,
+            createdLeadId,
+            nextstep: 2,
+          });
+        } else {
+          const createdLeadId = leadFlowState?.createdLeadId;
+          if (!createdLeadId) {
+            throw new Error("Lead id missing. Please complete Step 1 again.");
+          }
+          const updateResponse = await putApi(
+            `lead-tracking/${createdLeadId}`,
+            buildUpdatePayloadByStep(currentStep)
+          );
+          setLeadFlowState({
+            lastResponse: updateResponse,
+            draft: lead,
+            createdLeadId,
+            nextstep: Math.min(STEP_DEFINITIONS.length, currentStep + 1),
+          });
+        }
+      } else {
+        setLeadFlowState({
+          draft: lead,
+          nextstep: Math.min(STEP_DEFINITIONS.length, currentStep + 1),
+        });
+      }
       setCurrentStep((s) => Math.min(STEP_DEFINITIONS.length, s + 1));
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -663,9 +920,32 @@ export default function NewLeadPage() {
     try {
       if (isEditMode) {
         if (!selectedLead?.id) throw new Error("Lead id missing for update.");
+        let payload = buildUpdatePayloadByStep(currentStep);
+        if (currentStep === 1) {
+          const proposalLinkFromUpload = await uploadProposalFileIfAny(selectedLead.id);
+          if (proposalLinkFromUpload) {
+            payload = { ...payload, proposal_link: proposalLinkFromUpload };
+            setLead((prev) => ({ ...prev, proposalLink: proposalLinkFromUpload }));
+            setProposalUploadFile(null);
+          }
+        }
+        if (currentStep === 4) {
+          const sowNeedsUpload =
+            String(lead.sowStatus || "").trim() &&
+            String(lead.sowStatus || "").trim().toLowerCase() !== "pending";
+          const sowAttachmentLink =
+            sowNeedsUpload && sowUploadFile
+              ? await uploadFileToSubfolder(selectedLead.id, sowUploadFile, "Inwards")
+              : "";
+          const poAttachmentLink =
+            String(lead.poStatus || "").trim() && poUploadFile
+              ? await uploadFileToSubfolder(selectedLead.id, poUploadFile, "Outwards")
+              : "";
+          payload = buildStepFourUpdatePayload({ sowAttachmentLink, poAttachmentLink });
+        }
         const response = await putApi(
           `lead-tracking/${selectedLead.id}`,
-          buildUpdatePayloadByStep(currentStep)
+          payload
         );
         if (currentStep === 1 && lead.activityName?.trim()) {
           const targetFolderName = lead.brand || lead.activityName;
@@ -692,37 +972,35 @@ export default function NewLeadPage() {
           router.push("/leads");
         }
       } else {
-        const response = await postApi("lead-tracking", buildFinalPayload());
-        let createdLeadId = extractLeadIdFromCreateResponse(response);
+        const createdLeadId = leadFlowState?.createdLeadId;
         if (!createdLeadId) {
-          try {
-            const latestLeads = await getApi("lead-tracking", { page: 1, limit: 100 });
-            const rows = Array.isArray(latestLeads?.data) ? latestLeads.data : [];
-            const matched = rows.find(
-              (row) =>
-                String(row?.activity || "").trim() === String(lead.activityName || "").trim() &&
-                String(row?.brand || "").trim() === String(lead.brand || "").trim()
-            );
-            createdLeadId = matched?.id || null;
-          } catch {
-            createdLeadId = null;
-          }
+          throw new Error("Lead id missing. Please complete Step 1 first.");
         }
-        if (createdLeadId) {
-          const createdFolderName = lead.brand || lead.activityName || `Lead-${createdLeadId}`;
-          const createResponse = await fetch(`/api/leads/${createdLeadId}/sync-folder`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "create",
-              leadName: createdFolderName,
-            }),
-          });
-          if (createResponse.ok) {
-            setLastSyncedFolderName(createdFolderName);
-          }
+        let payload = buildUpdatePayloadByStep(currentStep);
+        if (currentStep === 4) {
+          const sowNeedsUpload =
+            String(lead.sowStatus || "").trim() &&
+            String(lead.sowStatus || "").trim().toLowerCase() !== "pending";
+          const sowAttachmentLink =
+            sowNeedsUpload && sowUploadFile
+              ? await uploadFileToSubfolder(createdLeadId, sowUploadFile, "Inwards")
+              : "";
+          const poAttachmentLink =
+            String(lead.poStatus || "").trim() && poUploadFile
+              ? await uploadFileToSubfolder(createdLeadId, poUploadFile, "Outwards")
+              : "";
+          payload = buildStepFourUpdatePayload({ sowAttachmentLink, poAttachmentLink });
         }
-        setLeadFlowState({ lastResponse: response, draft: lead, nextstep: currentStep });
+        const response = await putApi(
+          `lead-tracking/${createdLeadId}`,
+          payload
+        );
+        setLeadFlowState({
+          lastResponse: response,
+          draft: lead,
+          createdLeadId,
+          nextstep: currentStep,
+        });
         clearLeadFlowState();
         router.push("/leads");
       }
@@ -1161,12 +1439,22 @@ export default function NewLeadPage() {
                         className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         placeholder="https://…"
                       />
+                      <div className="mt-2">
+                        <label className="block text-xs font-medium text-slate-600">
+                          Upload proposal file (saved in Inward)
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) => setProposalUploadFile(e.target.files?.[0] || null)}
+                          className="mt-1 block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+                        />
+                      </div>
                     </div>
                   </>
                 )}
                 <div>
                   <label className="block text-sm font-medium text-slate-700">
-                    Next follow-up date <span className="text-rose-500">*</span>
+                    Next follow-up date
                   </label>
                   <input
                     type="date"
@@ -1449,6 +1737,60 @@ export default function NewLeadPage() {
                   )}
                 </div>
 
+                {lead.deliverableTypes.includes("Other") && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">
+                      Other deliverables <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="mt-2 space-y-2">
+                      {(lead.otherDeliverables || [""]).map((item, index) => (
+                        <div key={`other-deliverable-${index}`} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={item || ""}
+                            onChange={handleOtherDeliverableChange(index)}
+                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            placeholder="Enter custom deliverable"
+                          />
+                          {(lead.otherDeliverables || []).length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveOtherDeliverable(index)}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-700 hover:bg-rose-100"
+                              aria-label="Remove other deliverable"
+                            >
+                              -
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={handleAddOtherDeliverable}
+                        className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                      >
+                        <span className="text-sm leading-none">+</span>
+                        Add more
+                      </button>
+                    </div>
+                    {errors.otherDeliverables && (
+                      <p className="mt-1 text-xs text-rose-600">{errors.otherDeliverables}</p>
+                    )}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Expected closure date
+                  </label>
+                  <input
+                    type="date"
+                    value={lead.expectedClosureDate}
+                    onChange={handleChange("expectedClosureDate")}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-3">
                   <div>
                     <label className="block text-sm font-medium text-slate-700">
@@ -1458,8 +1800,12 @@ export default function NewLeadPage() {
                       type="date"
                       value={lead.activityDate}
                       onChange={handleChange("activityDate")}
+                      min={addDays(lead.expectedClosureDate, 1)}
                       className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
+                    {errors.activityDate && (
+                      <p className="mt-1 text-xs text-rose-600">{errors.activityDate}</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700">
@@ -1469,8 +1815,12 @@ export default function NewLeadPage() {
                       type="date"
                       value={lead.activityWindowFrom}
                       onChange={handleChange("activityWindowFrom")}
+                      min={addDays(lead.expectedClosureDate, 1)}
                       className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
+                    {errors.activityWindowFrom && (
+                      <p className="mt-1 text-xs text-rose-600">{errors.activityWindowFrom}</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700">
@@ -1480,26 +1830,21 @@ export default function NewLeadPage() {
                       type="date"
                       value={lead.activityWindowTo}
                       onChange={handleChange("activityWindowTo")}
+                      min={addDays(lead.expectedClosureDate, 1)}
                       className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
+                    {errors.activityWindowTo && (
+                      <p className="mt-1 text-xs text-rose-600">{errors.activityWindowTo}</p>
+                    )}
                   </div>
                 </div>
-                {errors.activityDate && (
-                  <p className="text-xs text-rose-600">{errors.activityDate}</p>
+                {lead.expectedClosureDate && (
+                  <p className="text-[11px] text-slate-500">
+                    Activity and window dates must be after expected closure date.
+                  </p>
                 )}
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700">
-                      Expected closure date
-                    </label>
-                    <input
-                      type="date"
-                      value={lead.expectedClosureDate}
-                      onChange={handleChange("expectedClosureDate")}
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                  </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700">
                       Probability (%)
@@ -1699,6 +2044,22 @@ export default function NewLeadPage() {
                         {errors.paymentTerms}
                       </p>
                     )}
+                    {String(lead.paymentTerms || "").trim().toLowerCase() === "custom" && (
+                      <div className="mt-2">
+                        <input
+                          type="text"
+                          value={lead.paymentTermsCustom}
+                          onChange={handleChange("paymentTermsCustom")}
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          placeholder="Enter custom payment terms"
+                        />
+                        {errors.paymentTermsCustom && (
+                          <p className="mt-1 text-xs text-rose-600">
+                            {errors.paymentTermsCustom}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700">
@@ -1744,6 +2105,19 @@ export default function NewLeadPage() {
                     <p className="mt-1 text-[11px] text-slate-500">
                       SOW defines scope, timelines/milestones, and cost breakup.
                     </p>
+                    {String(lead.sowStatus || "").trim() &&
+                      String(lead.sowStatus || "").trim().toLowerCase() !== "pending" && (
+                        <div className="mt-2">
+                          <label className="block text-xs font-medium text-slate-600">
+                            Upload SOW file (saved in Inwards)
+                          </label>
+                          <input
+                            type="file"
+                            onChange={(e) => setSowUploadFile(e.target.files?.[0] || null)}
+                            className="mt-1 block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+                          />
+                        </div>
+                      )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700">
@@ -1764,6 +2138,18 @@ export default function NewLeadPage() {
                     <p className="mt-1 text-[11px] text-slate-500">
                       PO is client financial approval required before invoicing.
                     </p>
+                    {String(lead.poStatus || "").trim() && (
+                      <div className="mt-2">
+                        <label className="block text-xs font-medium text-slate-600">
+                          Upload PO file (saved in Outwards)
+                        </label>
+                        <input
+                          type="file"
+                          onChange={(e) => setPoUploadFile(e.target.files?.[0] || null)}
+                          className="mt-1 block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
