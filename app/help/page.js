@@ -28,7 +28,6 @@ export default function HelpSupportPage() {
   const [entriesPerPage, setEntriesPerPage] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [selectedIds, setSelectedIds] = useState(() => new Set());
 
   const [inboxRows, setInboxRows] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -95,29 +94,6 @@ export default function HelpSupportPage() {
     );
   }, [inboxRows, search]);
 
-  const allVisibleSelected =
-    filteredTickets.length > 0 && filteredTickets.every((t) => selectedIds.has(t.id));
-  const someSelected = filteredTickets.some((t) => selectedIds.has(t.id));
-
-  const toggleSelectAll = () => {
-    if (allVisibleSelected) {
-      const next = new Set(selectedIds);
-      filteredTickets.forEach((t) => next.delete(t.id));
-      setSelectedIds(next);
-    } else {
-      const next = new Set(selectedIds);
-      filteredTickets.forEach((t) => next.add(t.id));
-      setSelectedIds(next);
-    }
-  };
-
-  const toggleRow = (id) => {
-    const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedIds(next);
-  };
-
   const openTicketCards = (row) => {
     const qs = new URLSearchParams();
     if (row.conversationId != null) qs.set("conversation_id", String(row.conversationId));
@@ -130,65 +106,52 @@ export default function HelpSupportPage() {
   const totalPages = Math.max(1, Math.ceil((totalCount || 0) / entriesPerPage));
 
   return (
-    <main className="min-h-screen bg-[#eef0fb] pb-10">
-      {/* Status tabs */}
-      <div className="rounded-2xl bg-white p-1.5 shadow-sm ring-1 ring-indigo-100/80">
-        <div className="flex flex-wrap gap-1">
-          {TICKET_TABS.map((tab) => {
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
-                  active
-                    ? "bg-linear-to-r from-indigo-500 to-violet-500 text-white shadow-md shadow-indigo-500/25"
-                    : "text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+    <main className="min-h-screen bg-[#f5f7ff] pb-10">
 
-      {!isFaqTab && (
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Category</span>
+      <section className="mt-4 space-y-3 rounded-2xl border border-indigo-100/80 bg-white/90 p-4 shadow-sm ring-1 ring-white/60 backdrop-blur">
+        {!isFaqTab && (
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              {SUPPORT_CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setCategoryFilter(cat)}
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold capitalize transition ${
+                    categoryFilter === cat
+                      ? "bg-linear-to-r from-indigo-500 to-violet-500 text-white shadow-md shadow-indigo-500/25"
+                      : "border border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-indigo-50/50"
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className={`space-y-2 ${!isFaqTab ? "border-t border-slate-100 pt-3" : ""}`}>
           <div className="flex flex-wrap gap-2">
-            {SUPPORT_CATEGORIES.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setCategoryFilter(cat)}
-                className={`rounded-full px-3 py-1.5 text-sm font-semibold capitalize ring-1 transition ${
-                  categoryFilter === cat
-                    ? "bg-indigo-600 text-white ring-indigo-600"
-                    : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50"
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+            {TICKET_TABS.map((tab) => {
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
+                    active
+                      ? "bg-linear-to-r from-indigo-500 to-violet-500 text-white shadow-md shadow-indigo-500/25"
+                      : "border border-transparent text-slate-600 hover:border-indigo-100 hover:bg-indigo-50/60"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
         </div>
-      )}
-
-      {!isFaqTab && (
-        <div className="mt-5">
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 rounded-xl bg-linear-to-r from-indigo-500 to-violet-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:from-indigo-600 hover:to-violet-600"
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5 stroke-2" fill="none" stroke="currentColor" aria-hidden="true">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Create Ticket
-          </button>
-        </div>
-      )}
+      </section>
 
       {!isFaqTab && (
         <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -330,36 +293,24 @@ export default function HelpSupportPage() {
             <table className="w-full min-w-[960px] text-left">
               <thead>
                 <tr className="border-b border-indigo-100 bg-[#f5f7ff]">
-                  <th className="w-10 px-3 py-3.5">
-                    <input
-                      type="checkbox"
-                      checked={allVisibleSelected}
-                      ref={(el) => {
-                        if (el) el.indeterminate = !allVisibleSelected && someSelected;
-                      }}
-                      onChange={toggleSelectAll}
-                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                      aria-label="Select all visible tickets"
-                    />
-                  </th>
                   <th className="px-3 py-3.5 text-xs font-semibold uppercase tracking-wide text-indigo-900">User</th>
                   <th className="px-3 py-3.5 text-xs font-semibold uppercase tracking-wide text-indigo-900">Tournament</th>
                   <th className="px-3 py-3.5 text-xs font-semibold uppercase tracking-wide text-indigo-900">Category</th>
                   <th className="px-3 py-3.5 text-xs font-semibold uppercase tracking-wide text-indigo-900">Priority</th>
                   <th className="px-3 py-3.5 text-xs font-semibold uppercase tracking-wide text-indigo-900">Status</th>
-                  <th className="px-3 py-3.5 text-xs font-semibold uppercase tracking-wide text-indigo-900">Assigned</th>
+                  <th className="px-3 py-3.5 text-xs font-semibold uppercase tracking-wide text-indigo-900">Last Updated</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td className="px-4 py-12 text-center text-sm text-slate-500" colSpan={7}>
+                    <td className="px-4 py-12 text-center text-sm text-slate-500" colSpan={6}>
                       Loading inbox…
                     </td>
                   </tr>
                 ) : filteredTickets.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-sm text-slate-500">
+                    <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500">
                       No tickets match your filters.
                     </td>
                   </tr>
@@ -379,20 +330,21 @@ export default function HelpSupportPage() {
                       className="cursor-pointer border-b border-slate-100 transition-colors hover:bg-indigo-50/40"
                       title="Open conversation tickets"
                     >
-                      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(row.id)}
-                          onChange={() => toggleRow(row.id)}
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                          aria-label={`Select row ${row.id}`}
-                        />
-                      </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-indigo-100 to-violet-100 text-sm font-bold text-indigo-800">
-                            {row.initials}
-                          </div>
+                          {row.profilePicUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={row.profilePicUrl}
+                              alt={row.userName}
+                              className="h-10 w-10 shrink-0 rounded-full object-cover ring-1 ring-slate-200"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-indigo-100 to-violet-100 text-sm font-bold text-indigo-800">
+                              {row.initials}
+                            </div>
+                          )}
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-slate-900">{row.userName}</p>
                             <p className="truncate text-xs text-slate-500">{row.userEmail}</p>
@@ -424,7 +376,7 @@ export default function HelpSupportPage() {
                           {formatStatusLabel(row.status)}
                         </span>
                       </td>
-                      <td className="px-3 py-3 text-sm text-slate-700">{row.assigned}</td>
+                      <td className="px-3 py-3 text-sm font-medium text-slate-700">{row.lastUpdated}</td>
                     </tr>
                   ))
                 )}

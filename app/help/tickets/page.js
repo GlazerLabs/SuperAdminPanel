@@ -33,31 +33,53 @@ function TicketsCardsInner() {
 
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(null);
+  const PAGE_SIZE = 20;
+  const loadingMoreLock = useRef(false);
+  const bottomSentinelRef = useRef(null);
 
   const loadTickets = useCallback(async () => {
     if (!conversationId && !userId) {
       setTickets([]);
       setLoading(false);
+      setLoadingMore(false);
+      setHasMore(false);
+      setPage(1);
       setError(null);
       return;
     }
     setLoading(true);
     setError(null);
+    setPage(1);
+    setHasMore(true);
+    loadingMoreLock.current = false;
     try {
       const params = {
         category,
         ...(conversationId ? { conversation_id: Number(conversationId) } : {}),
         ...(userId ? { user_id: Number(userId) } : {}),
         ...(tournamentId ? { tournament_id: Number(tournamentId) } : {}),
+        page: 1,
+        limit: PAGE_SIZE,
       };
-      const { tickets: rows } = await fetchSupportTickets(params);
+      const { tickets: rows, total } = await fetchSupportTickets(params);
       setTickets(rows);
+      if (!rows.length) {
+        setHasMore(false);
+      } else if (total > 0) {
+        setHasMore(rows.length < total);
+      } else {
+        setHasMore(rows.length >= PAGE_SIZE);
+      }
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("Support tickets failed:", e);
       setError(e?.message || e?.error || "Failed to load tickets");
       setTickets([]);
+      setHasMore(false);
     } finally {
       setLoading(false);
     }
@@ -76,10 +98,74 @@ function TicketsCardsInner() {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, [focusId, tickets]);
+  const loadMoreTickets = useCallback(async () => {
+    if (!conversationId && !userId) return;
+    if (loading || !hasMore || loadingMoreLock.current) return;
+    loadingMoreLock.current = true;
+    setLoadingMore(true);
+    setError(null);
+    const nextPage = page + 1;
+    try {
+      const params = {
+        category,
+        ...(conversationId ? { conversation_id: Number(conversationId) } : {}),
+        ...(userId ? { user_id: Number(userId) } : {}),
+        ...(tournamentId ? { tournament_id: Number(tournamentId) } : {}),
+        page: nextPage,
+        limit: PAGE_SIZE,
+      };
+      const { tickets: rows, total } = await fetchSupportTickets(params);
+      if (!rows.length) {
+        setHasMore(false);
+        return;
+      }
+      setTickets((prev) => {
+        const map = new Map(prev.map((t) => [String(t.id), t]));
+        let added = 0;
+        for (const row of rows) {
+          const key = String(row.id);
+          if (!map.has(key)) {
+            map.set(key, row);
+            added += 1;
+          }
+        }
+        // If backend repeats same data for next pages, stop further calls.
+        if (added === 0) {
+          setHasMore(false);
+          return prev;
+        }
+        const merged = Array.from(map.values());
+        if (total > 0) {
+          setHasMore(merged.length < total);
+        } else {
+          setHasMore(rows.length >= PAGE_SIZE);
+        }
+        return merged;
+      });
+      setPage(nextPage);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("Support tickets page fetch failed:", e);
+      setError(e?.message || e?.error || "Failed to load more tickets");
+    } finally {
+      setLoadingMore(false);
+      loadingMoreLock.current = false;
+    }
+  }, [category, conversationId, hasMore, loading, page, tournamentId, userId]);
 
-  const scrollDown = () => {
-    window.scrollBy({ top: window.innerHeight * 0.85, behavior: "smooth" });
-  };
+  useEffect(() => {
+    const sentinel = bottomSentinelRef.current;
+    if (!sentinel || loading || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        loadMoreTickets();
+      },
+      { root: null, rootMargin: "200px 0px 200px 0px", threshold: 0 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadMoreTickets, loading, hasMore, tickets.length]);
 
   const openChatRoute = (t) => {
     const tid = t.numericId ?? t.id;
@@ -99,7 +185,7 @@ function TicketsCardsInner() {
   }, [hasContext, loading]);
 
   return (
-    <main className="relative min-h-screen bg-[#eef0fb] pb-24">
+    <main className="relative min-h-screen bg-[#f5f7ff] pb-24">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <Link
@@ -146,7 +232,6 @@ function TicketsCardsInner() {
           </p>
         ) : (
           tickets.map((t) => {
-            const unassigned = !t.assigneeName || t.assigneeName === "—";
             const cardKey = String(t.id);
             return (
               <article
@@ -201,74 +286,17 @@ function TicketsCardsInner() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-3 px-4 py-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    {unassigned ? (
-                      <>
-                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-100 text-rose-400 ring-1 ring-rose-200/80">
-                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M4 12h16" />
-                          </svg>
-                        </div>
-                        <span className="text-sm text-slate-500">Unassigned</span>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-indigo-100 to-violet-100 text-xs font-bold text-indigo-800">
-                          {t.assigneeInitials}
-                        </div>
-                        <span className="truncate text-sm text-slate-600">{t.assigneeName}</span>
-                      </>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
-                      aria-label="Edit ticket"
-                    >
-                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4 10.5-10.5Z" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-rose-50 hover:text-rose-600"
-                      aria-label="Delete ticket"
-                    >
-                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M3 6h18M8 6V4h8v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                        <path d="M10 11v6M14 11v6" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
               </article>
             );
           })
         )}
       </div>
+      {!loading && tickets.length > 0 ? (
+        <div ref={bottomSentinelRef} className="flex min-h-10 items-center justify-center py-4">
+          {loadingMore ? <span className="text-sm text-slate-500">Loading more tickets…</span> : null}
+        </div>
+      ) : null}
 
-      <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/80 pt-4 text-sm text-slate-500">
-        <p>
-          {loading ? "…" : `Showing ${tickets.length} ticket${tickets.length === 1 ? "" : "s"}`}
-          {userEmail ? " (filtered by user)" : ""}
-        </p>
-        <p className="text-slate-400">Support API: GET /support/admin/tickets</p>
-      </div>
-
-      <button
-        type="button"
-        onClick={scrollDown}
-        className="fixed bottom-8 left-1/2 z-10 flex h-12 w-12 -translate-x-1/2 items-center justify-center rounded-full bg-slate-800 text-white shadow-lg hover:bg-slate-700"
-        aria-label="Scroll down"
-      >
-        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M12 5v14M5 12l7 7 7-7" />
-        </svg>
-      </button>
     </main>
   );
 }

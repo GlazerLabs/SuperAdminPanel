@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { uploadImage } from "@/api";
 import { fetchTicketMessages, isLikelyImageUrl, sendTicketMessage, updateTicketStatus } from "@/lib/supportApi";
 
@@ -31,6 +31,7 @@ function mergeChronological(existing, incoming) {
 
 export default function TicketChatPage() {
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const ticketIdParam = String(params?.ticketId || "");
 
@@ -100,6 +101,41 @@ export default function TicketChatPage() {
     }
   }, [canLoad, ticketIdNum, userId]);
 
+  const refreshMessagesSilently = useCallback(async () => {
+    if (!canLoad) return;
+    const container = scrollRef.current;
+    const distanceFromBottom = container ? container.scrollHeight - container.scrollTop - container.clientHeight : 0;
+    const shouldAutoStickToBottom = distanceFromBottom < 120;
+    try {
+      const { messages: rows, total, explicitTotal } = await fetchTicketMessages({
+        ticket_id: ticketIdNum,
+        user_id: userId,
+        page: 1,
+        limit: PAGE_SIZE,
+      });
+
+      setMessages((prev) => {
+        const merged = mergeChronological(prev, rows);
+        if (total > 0) setTotalCount(total);
+        if (explicitTotal > 0) {
+          setHasMoreOlder(merged.length < explicitTotal);
+        } else {
+          setHasMoreOlder(rows.length >= PAGE_SIZE);
+        }
+        return merged;
+      });
+
+      // Do not yank viewport when user is reading older messages.
+      if (!shouldAutoStickToBottom) {
+        skipScrollToEndRef.current = true;
+      }
+    } catch (e) {
+      // Keep silent refresh non-blocking; primary load handles errors.
+      // eslint-disable-next-line no-console
+      console.error("Silent ticket refresh failed:", e);
+    }
+  }, [canLoad, ticketIdNum, userId]);
+
   useEffect(() => {
     if (!canLoad) {
       setLoadingInitial(false);
@@ -107,6 +143,16 @@ export default function TicketChatPage() {
     }
     loadInitialMessages();
   }, [canLoad, loadInitialMessages]);
+
+  useEffect(() => {
+    if (!canLoad) return undefined;
+    const timer = setInterval(() => {
+      if (document.hidden) return;
+      if (loadingInitial || loadingOlderLock.current || sending || uploadingAttachment || statusSaving) return;
+      refreshMessagesSilently();
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [canLoad, loadingInitial, sending, uploadingAttachment, statusSaving, refreshMessagesSilently]);
 
   /** Scroll to bottom after initial load or new message — not when prepending older. */
   useEffect(() => {
@@ -250,7 +296,7 @@ export default function TicketChatPage() {
       });
       setDraft("");
       setPendingAttachmentUrl(null);
-      await loadInitialMessages();
+      await refreshMessagesSilently();
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("Send message failed:", e);
@@ -295,22 +341,34 @@ export default function TicketChatPage() {
   }
 
   const displayUserLabel = `User #${userId}`;
+  const handleBackToTickets = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/help/tickets");
+  };
 
   return (
-    <main className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col overflow-hidden bg-[#eef0fb]">
+    <main className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col overflow-hidden bg-[#eef0fb] p-3 sm:p-5">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_8px_40px_-12px_rgba(15,23,42,0.12)] ring-1 ring-slate-200/80">
       <div className="shrink-0 border-b border-slate-200/80 bg-white px-4 py-3 sm:px-6">
-        <Link href="/help/tickets" className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800">
+        <button
+          type="button"
+          onClick={handleBackToTickets}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800"
+        >
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M15 18l-6-6 6-6" />
           </svg>
           Back to tickets
-        </Link>
+        </button>
         <p className="mt-2 text-base font-semibold text-slate-900">Ticket #{ticketIdNum} · Chat</p>
       </div>
 
       {error ? <div className="shrink-0 border-b border-rose-100 bg-rose-50 px-4 py-2 text-sm text-rose-800 sm:px-6">{error}</div> : null}
 
-      <div className="shrink-0 border-b border-slate-200/80 bg-slate-50/90 px-4 py-3 sm:px-6">
+      <div className="shrink-0 border-b border-slate-200/80 bg-slate-50/95 px-4 py-3 sm:px-6">
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Update status</p>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
           <label className="flex min-w-[160px] flex-col gap-1 text-sm">
@@ -340,7 +398,7 @@ export default function TicketChatPage() {
             type="button"
             onClick={saveStatus}
             disabled={statusSaving}
-            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+            className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_4px_20px_-4px_rgba(79,70,229,0.55)] transition hover:bg-indigo-700 disabled:opacity-50"
           >
             {statusSaving ? "Saving…" : "Save status"}
           </button>
@@ -349,7 +407,7 @@ export default function TicketChatPage() {
 
       <div
         ref={scrollRef}
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50/80 px-4 py-3 sm:px-6"
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50/90 px-4 py-4 sm:px-6"
       >
         <div ref={topSentinelRef} className="pointer-events-none h-2 w-full shrink-0" aria-hidden="true" />
         {loadingOlder ? (
@@ -376,8 +434,10 @@ export default function TicketChatPage() {
             return (
               <div key={msg.id} className={`flex ${isAdmin ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[min(82%,42rem)] rounded-2xl px-3.5 py-2.5 shadow-sm ${
-                    isAdmin ? "bg-indigo-600 text-white" : "bg-white text-slate-800 ring-1 ring-slate-200"
+                  className={`max-w-[min(82%,42rem)] rounded-2xl px-3.5 py-2.5 shadow-sm ring-1 ${
+                    isAdmin
+                      ? "bg-indigo-600 text-white ring-indigo-500/30 shadow-[0_4px_24px_-8px_rgba(79,70,229,0.35)]"
+                      : "bg-white text-slate-800 ring-slate-200/90 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.08)]"
                   }`}
                 >
                   <p className="text-xs font-semibold opacity-80">{isAdmin ? "Admin" : displayUserLabel}</p>
@@ -413,8 +473,8 @@ export default function TicketChatPage() {
         <div ref={endRef} />
       </div>
 
-      <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
-        <div className="mx-auto flex max-w-5xl flex-col gap-2">
+      <div className="shrink-0 border-t border-slate-200/90 bg-white px-4 py-3 sm:px-6">
+        <div className="flex w-full flex-col gap-3">
           <input
             ref={fileInputRef}
             type="file"
@@ -424,20 +484,23 @@ export default function TicketChatPage() {
             onChange={onPickAttachment}
           />
           {pendingAttachmentUrl ? (
-            <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/70">
               {isLikelyImageUrl(pendingAttachmentUrl) ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={pendingAttachmentUrl} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover ring-1 ring-slate-200" />
+                <img
+                  src={pendingAttachmentUrl}
+                  alt=""
+                  className="h-20 max-h-[120px] w-auto max-w-[min(100%,280px)] rounded-xl object-contain object-left ring-1 ring-slate-200/80"
+                />
               ) : (
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-slate-200 text-xs font-medium text-slate-600">
-                  FILE
+                <div className="flex min-h-18 min-w-18 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/80">
+                  PDF
                 </div>
               )}
-              <p className="min-w-0 flex-1 truncate text-xs text-slate-600">{pendingAttachmentUrl}</p>
               <button
                 type="button"
                 onClick={() => setPendingAttachmentUrl(null)}
-                className="shrink-0 rounded-lg px-2 py-1 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                className="shrink-0 self-start rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
               >
                 Remove
               </button>
@@ -445,7 +508,7 @@ export default function TicketChatPage() {
           ) : null}
 
           {/* Reference: input (flex) → attach → send; one bar, equal heights */}
-          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm ring-1 ring-slate-200/60">
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200/90 bg-white p-1.5 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -479,12 +542,13 @@ export default function TicketChatPage() {
               type="button"
               onClick={sendAdminMessage}
               disabled={sending || uploadingAttachment || (!draft.trim() && !pendingAttachmentUrl)}
-              className="inline-flex h-12 min-w-[5.5rem] shrink-0 items-center justify-center rounded-lg bg-indigo-500 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-600 disabled:opacity-50"
+              className="inline-flex h-12 min-w-22 shrink-0 items-center justify-center rounded-lg bg-indigo-600 px-5 text-sm font-bold text-white shadow-[0_4px_20px_-4px_rgba(79,70,229,0.55)] transition hover:bg-indigo-700 disabled:opacity-50"
             >
               {sending ? "…" : "Send"}
             </button>
           </div>
         </div>
+      </div>
       </div>
     </main>
   );
