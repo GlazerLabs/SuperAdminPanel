@@ -8,6 +8,8 @@ import { readProfile } from "@/api";
 
 const titleMap = {
   "/": "Dashboard",
+  "/help": "Help & Support",
+  "/help/tickets": "Support Tickets",
   "/members": "Members",
   "/members/users": "Members",
   "/members/admin": "Members",
@@ -94,6 +96,8 @@ export default function AppHeader() {
     titleMap[pathname] ??
     (pathname?.startsWith("/members")
       ? "Members"
+    : pathname?.startsWith("/help/tickets/")
+      ? "Support Chat"
       : pathname?.startsWith("/tournaments")
         ? "Tournaments"
         : "Dashboard");

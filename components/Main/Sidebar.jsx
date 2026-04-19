@@ -34,7 +34,7 @@ const formatModuleLabel = (moduleKey = "") => {
 
 const secondaryNav = [
   { label: "Settings", href: "/settings", icon: "settings" },
-  { label: "Help Center", href: "/help", icon: "help" },
+  { label: "Help & Support", href: "/help", icon: "help", matchPrefix: true },
   { label: "Logout", icon: "logout", action: "logout" },
 ];
 
