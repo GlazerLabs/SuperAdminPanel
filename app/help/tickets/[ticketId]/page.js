@@ -54,7 +54,6 @@ export default function TicketChatPage() {
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [statusValue, setStatusValue] = useState("in_progress");
   const [resolutionNote, setResolutionNote] = useState("");
-  const [internalNote, setInternalNote] = useState("");
   const [statusSaving, setStatusSaving] = useState(false);
 
   const scrollRef = useRef(null);
@@ -270,10 +269,8 @@ export default function TicketChatPage() {
         ticket_id: ticketIdNum,
         status: statusValue,
         resolution_note: resolutionNote,
-        note: internalNote,
       });
       setResolutionNote("");
-      setInternalNote("");
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("Update status failed:", e);
@@ -309,12 +306,6 @@ export default function TicketChatPage() {
           Back to tickets
         </Link>
         <p className="mt-2 text-base font-semibold text-slate-900">Ticket #{ticketIdNum} · Chat</p>
-        <p className="text-sm text-slate-500">
-          {displayUserLabel} · user_id={userId}
-          {!loadingInitial && totalCount > 0
-            ? ` · ${messages.length} loaded (${totalCount} total)${hasMoreOlder ? " · scroll up for older" : ""}`
-            : null}
-        </p>
       </div>
 
       {error ? <div className="shrink-0 border-b border-rose-100 bg-rose-50 px-4 py-2 text-sm text-rose-800 sm:px-6">{error}</div> : null}
@@ -342,15 +333,6 @@ export default function TicketChatPage() {
               value={resolutionNote}
               onChange={(e) => setResolutionNote(e.target.value)}
               placeholder="Visible resolution summary"
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
-            <span className="text-slate-500">Internal note</span>
-            <input
-              value={internalNote}
-              onChange={(e) => setInternalNote(e.target.value)}
-              placeholder="Optional internal note"
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
             />
           </label>
@@ -431,7 +413,7 @@ export default function TicketChatPage() {
         <div ref={endRef} />
       </div>
 
-      <div className="shrink-0 border-t border-slate-200 bg-slate-100/90 px-4 py-3 sm:px-6">
+      <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
         <div className="mx-auto flex max-w-5xl flex-col gap-2">
           <input
             ref={fileInputRef}
@@ -463,7 +445,7 @@ export default function TicketChatPage() {
           ) : null}
 
           {/* Reference: input (flex) → attach → send; one bar, equal heights */}
-          <div className="flex items-center gap-2 rounded-xl border border-slate-300/80 bg-slate-800/95 p-1.5 shadow-inner ring-1 ring-black/5">
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm ring-1 ring-slate-200/60">
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -475,13 +457,13 @@ export default function TicketChatPage() {
               }}
               rows={1}
               placeholder="Type your reply… (Enter to send)"
-              className="min-h-12 flex-1 resize-none rounded-lg border-0 bg-slate-900/40 px-3 py-3 text-sm leading-snug text-slate-100 placeholder:text-slate-500 outline-none ring-0 focus:ring-2 focus:ring-indigo-400/60"
+              className="min-h-12 flex-1 resize-none rounded-lg border-0 bg-white px-3 py-3 text-sm leading-snug text-slate-900 placeholder:text-slate-400 outline-none ring-0 focus:ring-2 focus:ring-indigo-400/50"
             />
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadingAttachment || sending}
-              className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-slate-600/80 bg-slate-700/80 text-slate-200 transition hover:bg-slate-600 disabled:opacity-50"
+              className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-100 disabled:opacity-50"
               aria-label="Attach image or PDF"
             >
               {uploadingAttachment ? (
