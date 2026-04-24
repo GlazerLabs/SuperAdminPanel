@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 function roleBadge(role) {
   const key = String(role || "").toLowerCase();
   if (key.includes("user")) return "bg-indigo-600/10 text-indigo-700 ring-1 ring-indigo-200/60";
@@ -29,6 +31,7 @@ function avatarGradient(seed) {
 }
 
 export default function OrgChartNode({ node }) {
+  const [imageError, setImageError] = useState(false);
   const role =
     node?.role ??
     (node?.type === "user"
@@ -46,14 +49,23 @@ export default function OrgChartNode({ node }) {
       <div className="relative overflow-hidden rounded-2xl bg-white px-5 py-4 shadow-[0_10px_26px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/90 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
         <div className="absolute right-0 top-0 h-20 w-20 translate-x-6 -translate-y-6 rounded-full bg-indigo-600/10" />
         <div className="relative flex min-w-[260px] items-center gap-3.5">
-          <div
-            className={`grid h-12 w-12 shrink-0 place-items-center rounded-full bg-linear-to-br ${avatarGradient(
-              node?.id ?? node?.label
-            )} text-sm font-extrabold text-white ring-1 ring-black/5`}
-            aria-hidden="true"
-          >
-            {initials(node?.label)}
-          </div>
+          {node?.meta?.profile_pic_url && !imageError ? (
+            <img
+              src={node.meta.profile_pic_url}
+              alt={node?.label ? `${node.label} profile` : "Profile"}
+              className="h-12 w-12 shrink-0 rounded-full object-cover ring-1 ring-black/5"
+              onError={() => setImageError(true)}
+            />
+          ) : (
+            <div
+              className={`grid h-12 w-12 shrink-0 place-items-center rounded-full bg-linear-to-br ${avatarGradient(
+                node?.id ?? node?.label
+              )} text-sm font-extrabold text-white ring-1 ring-black/5`}
+              aria-hidden="true"
+            >
+              {initials(node?.label)}
+            </div>
+          )}
           <div className="min-w-0">
             <div className="truncate text-[15px] font-bold text-slate-900">
               {node?.label ?? "Unknown"}

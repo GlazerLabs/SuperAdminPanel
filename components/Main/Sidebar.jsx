@@ -19,7 +19,7 @@ const ALL_PRIMARY_NAV = [
   { label: "Dashboard", href: "/", icon: "grid" },
   { label: "Members", href: "/members", icon: "org", matchPrefix: true },
   { label: "Role Management", href: "/roles", icon: "shield", matchPrefix: true },
-  // { label: "Tournaments", href: "/tournaments", icon: "trophy" },
+  { label: "Tournaments", href: "/tournaments", icon: "trophy" },
   { label: "Lead Tracking", href: "/leads", icon: "activity", matchPrefix: true },
   { label: "Activity Logs", href: "/tracking", icon: "logs" },
 ];
