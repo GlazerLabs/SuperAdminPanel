@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -18,7 +19,7 @@ const ALL_PRIMARY_NAV = [
   { label: "Dashboard", href: "/", icon: "grid" },
   { label: "Members", href: "/members", icon: "org", matchPrefix: true },
   { label: "Role Management", href: "/roles", icon: "shield", matchPrefix: true },
-  // { label: "Tournaments", href: "/tournaments", icon: "trophy" },
+  { label: "Tournaments", href: "/tournaments", icon: "trophy" },
   { label: "Lead Tracking", href: "/leads", icon: "activity", matchPrefix: true },
   { label: "Activity Logs", href: "/tracking", icon: "logs" },
 ];
@@ -34,7 +35,16 @@ const formatModuleLabel = (moduleKey = "") => {
 
 const secondaryNav = [
   { label: "Settings", href: "/settings", icon: "settings" },
-  { label: "Help & Support", href: "/help", icon: "help", matchPrefix: true },
+  {
+    label: "Help & Support",
+    href: "/help",
+    icon: "help",
+    matchPrefix: true,
+    children: [
+      { label: "Tickets", href: "/help", icon: "ticket", matchPrefix: false },
+      { label: "FAQ", href: "/help/faq", icon: "faq", matchPrefix: true },
+    ],
+  },
   { label: "Logout", icon: "logout", action: "logout" },
 ];
 
@@ -118,7 +128,49 @@ function NavIcon({ type, active }) {
   }
 }
 
+function SubNavIcon({ type, active }) {
+  const base = `h-4 w-4 shrink-0 stroke-[2] ${active ? "stroke-indigo-200" : "stroke-slate-500"}`;
+
+  switch (type) {
+    case "ticket":
+      return (
+        <svg viewBox="0 0 24 24" className={base} fill="none" aria-hidden="true">
+          <path d="M4 9a2 2 0 0 0 2-2h12a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H6a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4V9Z" />
+          <path d="M12 8v8" />
+        </svg>
+      );
+    case "faq":
+      return (
+        <svg viewBox="0 0 24 24" className={base} fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="8" />
+          <path d="M10.5 9.5a1.9 1.9 0 1 1 3 1.6c-.8.5-1.5 1-1.5 2" />
+          <circle cx="12" cy="16" r="0.7" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
 function NavSection({ title, items, pathname, onLogout }) {
+  const [expandedParents, setExpandedParents] = useState({});
+
+  useEffect(() => {
+    setExpandedParents((prev) => {
+      const next = { ...prev };
+      items.forEach((item) => {
+        if (item.children?.length && pathname?.startsWith(item.href) && next[item.href] == null) {
+          next[item.href] = true;
+        }
+      });
+      return next;
+    });
+  }, [items, pathname]);
+
+  const toggleParent = (href) => {
+    setExpandedParents((prev) => ({ ...prev, [href]: !prev[href] }));
+  };
+
   return (
     <div className="mt-8">
       <p className="px-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
@@ -141,19 +193,75 @@ function NavSection({ title, items, pathname, onLogout }) {
           }
 
           const active = item.matchPrefix ? pathname?.startsWith(item.href) : pathname === item.href;
+          const childItems = item.children || [];
+          const hasChildren = childItems.length > 0;
+          const isExpanded = !!expandedParents[item.href];
+          const childIsActive = (child) => {
+            if (child.matchPrefix) return pathname?.startsWith(child.href);
+            return pathname === child.href;
+          };
+
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 rounded-xl px-4 py-3.5 text-[15px] font-medium transition-all ${
-                active
-                  ? "bg-indigo-500/15 text-white"
-                  : "text-slate-300 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <NavIcon type={item.icon} active={active} />
-              <span className="truncate">{item.label}</span>
-            </Link>
+            <div key={item.href}>
+              {hasChildren ? (
+                <button
+                  type="button"
+                  onClick={() => toggleParent(item.href)}
+                  className={`flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-[15px] font-medium transition-all ${
+                    active
+                      ? "bg-indigo-500/15 text-white"
+                      : "text-slate-300 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  <NavIcon type={item.icon} active={active} />
+                  <span className="truncate">{item.label}</span>
+                  <svg
+                    viewBox="0 0 20 20"
+                    className={`ml-auto h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    aria-hidden="true"
+                  >
+                    <path d="M5 8l5 5 5-5" />
+                  </svg>
+                </button>
+              ) : (
+                <Link
+                  href={item.href}
+                  className={`flex items-center gap-3 rounded-xl px-4 py-3.5 text-[15px] font-medium transition-all ${
+                    active
+                      ? "bg-indigo-500/15 text-white"
+                      : "text-slate-300 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  <NavIcon type={item.icon} active={active} />
+                  <span className="truncate">{item.label}</span>
+                </Link>
+              )}
+
+              {hasChildren && isExpanded ? (
+                <div className="mt-1 space-y-1 pl-12 pr-2">
+                  {childItems.map((child) => {
+                    const subActive = childIsActive(child);
+                    return (
+                      <Link
+                        key={child.href}
+                        href={child.href}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                          subActive
+                            ? "bg-indigo-500/20 text-indigo-100"
+                            : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                        }`}
+                      >
+                        <SubNavIcon type={child.icon} active={subActive} />
+                        {child.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
           );
         })}
       </div>

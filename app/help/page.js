@@ -18,7 +18,6 @@ const TICKET_TABS = [
   { id: "in_progress", label: "In Progress" },
   { id: "resolved", label: "Resolved" },
   { id: "closed", label: "Closed" },
-  { id: "faq", label: "FAQ Manager" },
 ];
 
 export default function HelpSupportPage() {
@@ -34,10 +33,7 @@ export default function HelpSupportPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const isFaqTab = activeTab === "faq";
-
   const loadInbox = useCallback(async () => {
-    if (isFaqTab) return;
     setLoading(true);
     setError(null);
     try {
@@ -59,7 +55,7 @@ export default function HelpSupportPage() {
     } finally {
       setLoading(false);
     }
-  }, [isFaqTab, activeTab, categoryFilter, currentPage, entriesPerPage]);
+  }, [activeTab, categoryFilter, currentPage, entriesPerPage]);
 
   useEffect(() => {
     loadInbox();
@@ -109,28 +105,26 @@ export default function HelpSupportPage() {
     <main className="min-h-screen bg-[#f5f7ff] pb-10">
 
       <section className="mt-4 space-y-3 rounded-2xl border border-indigo-100/80 bg-white/90 p-4 shadow-sm ring-1 ring-white/60 backdrop-blur">
-        {!isFaqTab && (
-          <div className="space-y-2">
-            <div className="flex flex-wrap gap-2">
-              {SUPPORT_CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setCategoryFilter(cat)}
-                  className={`rounded-xl px-4 py-2 text-sm font-semibold capitalize transition ${
-                    categoryFilter === cat
-                      ? "bg-linear-to-r from-indigo-500 to-violet-500 text-white shadow-md shadow-indigo-500/25"
-                      : "border border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-indigo-50/50"
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            {SUPPORT_CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setCategoryFilter(cat)}
+                className={`rounded-xl px-4 py-2 text-sm font-semibold capitalize transition ${
+                  categoryFilter === cat
+                    ? "bg-linear-to-r from-indigo-500 to-violet-500 text-white shadow-md shadow-indigo-500/25"
+                    : "border border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-indigo-50/50"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
 
-        <div className={`space-y-2 ${!isFaqTab ? "border-t border-slate-100 pt-3" : ""}`}>
+        <div className="space-y-2 border-t border-slate-100 pt-3">
           <div className="flex flex-wrap gap-2">
             {TICKET_TABS.map((tab) => {
               const active = activeTab === tab.id;
@@ -153,8 +147,7 @@ export default function HelpSupportPage() {
         </div>
       </section>
 
-      {!isFaqTab && (
-        <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="flex items-center gap-4 rounded-2xl bg-white p-5 shadow-md shadow-indigo-100/40 ring-1 ring-white/80">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600">
               <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -206,36 +199,9 @@ export default function HelpSupportPage() {
               {stats.responseDelta}
             </span>
           </div>
-        </section>
-      )}
+      </section>
 
-      {isFaqTab ? (
-        <section className="mt-8 overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-indigo-100/60">
-          <div className="border-b border-slate-100 px-6 py-5">
-            <h2 className="text-lg font-semibold text-slate-900">FAQ Manager</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Create and organize help articles. Connect your CMS or API when ready.
-            </p>
-          </div>
-          <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
-              <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.6">
-                <path d="M4 6h16M4 12h10M4 18h14" />
-              </svg>
-            </div>
-            <p className="max-w-md text-sm text-slate-600">
-              No FAQs published yet. Use this space to add categories, questions, and answers for your users.
-            </p>
-            <button
-              type="button"
-              className="mt-2 rounded-xl bg-linear-to-r from-indigo-500 to-violet-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/25"
-            >
-              Add FAQ
-            </button>
-          </div>
-        </section>
-      ) : (
-        <section className="mt-8 overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-indigo-100/60">
+      <section className="mt-8 overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-indigo-100/60">
           <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50/90 px-4 py-3">
             <div className="flex items-center gap-2 text-sm text-slate-600">
               <span>Show</span>
@@ -408,8 +374,7 @@ export default function HelpSupportPage() {
               </button>
             </div>
           </div>
-        </section>
-      )}
+      </section>
     </main>
   );
 }
