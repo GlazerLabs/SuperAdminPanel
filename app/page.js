@@ -229,25 +229,45 @@ export default function Home() {
   const kpis = kpi?.kpis || null;
   const rangeLabel = rangeLabelOverride || kpi?.range?.label || activePeriod;
   const cardsLoading = kpiLoading || userCountsLoading;
+  const useAverageDau =
+    activePeriod === "Last Week" ||
+    activePeriod === "Last Month" ||
+    activePeriod === "Quarterly";
+
+  const dauValue = useMemo(() => {
+    const chartData = Array.isArray(kpi?.dau?.chartData) ? kpi.dau.chartData : [];
+    if (!chartData.length) return null;
+
+    if (useAverageDau) {
+      const sum = chartData.reduce((acc, point) => acc + (Number(point?.users) || 0), 0);
+      return Math.round(sum / chartData.length);
+    }
+
+    const current = Number(kpi?.dau?.current);
+    return Number.isFinite(current) ? current : null;
+  }, [kpi, useAverageDau]);
 
   const totalUsersDisplay = totalUsers === null ? "—" : formatCompact(totalUsers);
   const newUsersDisplay = newUsers === null ? "—" : formatCompact(newUsers);
+  const dauDisplay = dauValue === null ? "—" : formatCompact(dauValue);
 
   const buildCopyText = () => {
-    const periodText = rangeLabelOverride || formatRangeForCopy(kpi?.range?.label || "") || activePeriod;
     const mauDisplay = !kpis ? "—" : formatCompact(kpis.mau);
-    const dauDisplay = !kpis ? "—" : formatCompact(kpi?.dau?.current);
+    const newDownloadsDisplay = !kpis ? "—" : formatCompact(kpis.totalDownloads);
+    const newRegistrationsDisplay = newUsers === null ? "—" : formatCompact(newUsers);
     const avgTimeDisplay = !kpis ? "—" : formatMinutes(kpis.avgTimeSpentSeconds);
     const adReqDisplay = !kpis ? "—" : formatCompact(kpis.adRequests);
+    const crashDisplay = !kpis ? "—" : `${kpis.crashPercent}%`;
 
     return [
-      `Thryl Stats (${periodText})`,
-      "",
       `Total Users: ${totalUsersDisplay}`,
       `MAU: ${mauDisplay}`,
       `DAU: ${dauDisplay}`,
+      `New Downloads : ${newDownloadsDisplay}`,
+      `New Registrations : ${newRegistrationsDisplay}`,
       `Avg Time Spent: ${avgTimeDisplay}`,
       `Ad Requests: ${adReqDisplay}`,
+      `Crash % : ${crashDisplay}`,
     ].join("\n");
   };
 
@@ -400,7 +420,7 @@ export default function Home() {
               DAU
             </p>
             <p className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
-              {kpiLoading || !kpis ? "—" : formatCompact(kpi?.dau?.current)}
+              {kpiLoading || !kpis ? "—" : dauDisplay}
             </p>
             <p className="mt-1 text-sm text-slate-500">{rangeLabel}</p>
           </div>
