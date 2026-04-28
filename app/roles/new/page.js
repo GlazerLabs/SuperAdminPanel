@@ -104,6 +104,20 @@ export default function AddNewRolePage() {
     });
   };
 
+  const isGroupAllChecked = (keys) =>
+    keys.length > 0 && keys.every((key) => moduleAccess[key] === "FULL");
+
+  const handleGroupAllPermissionChange = (keys, checked) => {
+    const nextValue = checked ? "FULL" : "NONE";
+    setModuleAccess((prev) => {
+      const next = { ...prev };
+      keys.forEach((key) => {
+        next[key] = nextValue;
+      });
+      return next;
+    });
+  };
+
   const formatModuleLabel = (moduleKey, sectionKey) => {
     const prefix =
       sectionKey === "super_admin" ? "super_" : sectionKey === "oap" ? "oap_" : "admin_";
@@ -113,6 +127,17 @@ export default function AddNewRolePage() {
       .filter(Boolean)
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(" ");
+  };
+
+  const getOapModuleGroups = () => {
+    const oapModules = modulesBySection.oap || [];
+    const isScrimsModule = (key) => /^oap_scrims(?:_|$)/.test(String(key).toLowerCase());
+    const isSeriesModule = (key) => /^oap_series(?:_|$)/.test(String(key).toLowerCase());
+    return {
+      normal: oapModules.filter((key) => !isScrimsModule(key) && !isSeriesModule(key)),
+      scrims: oapModules.filter((key) => isScrimsModule(key)),
+      series: oapModules.filter((key) => isSeriesModule(key)),
+    };
   };
 
   const buildAccessEntries = () => {
@@ -280,7 +305,7 @@ export default function AddNewRolePage() {
           )}
 
           {!isLoadingModules && (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className="space-y-4">
               {[
                 { key: "oap", title: "OAP" },
                 { key: "admin", title: "Admin Panel" },
@@ -305,32 +330,90 @@ export default function AddNewRolePage() {
                       <div className="peer h-5 w-10 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-indigo-600 peer-checked:after:translate-x-5" />
                     </label>
                   </div>
-                  <div className="space-y-2">
-                    {(modulesBySection[section.key] || []).map((key) => (
-                      <div
-                        key={key}
-                        className="flex items-center justify-between gap-4 rounded-xl border border-slate-200/80 bg-slate-50/70 px-3.5 py-3"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-slate-900">
-                            {formatModuleLabel(key, section.key)}
-                          </p>
-                        </div>
-                        <select
-                          value={moduleAccess[key] || "NONE"}
-                          onChange={(e) => handleModuleAccessChange(key, e.target.value)}
-                          className="min-w-[100px] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold tracking-wide text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  {section.key === "oap" ? (
+                    <div className="flex flex-col gap-3 lg:flex-row">
+                      {[
+                        { key: "normal", title: "Normal" },
+                        { key: "scrims", title: "Scrims" },
+                        { key: "series", title: "Series" },
+                      ].map((group) => {
+                        const groupedModules = getOapModuleGroups();
+                        const keys = groupedModules[group.key] || [];
+                        return (
+                          <div key={group.key} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50/40 p-3">
+                            <div className="mb-2 flex items-center justify-between">
+                              <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">{group.title}</p>
+                              <div className="flex items-center gap-2">
+                                {["scrims", "series"].includes(group.key) && (
+                                  <label className="relative inline-flex cursor-pointer items-center">
+                                    <input
+                                      type="checkbox"
+                                      checked={isGroupAllChecked(keys)}
+                                      onChange={(e) => handleGroupAllPermissionChange(keys, e.target.checked)}
+                                      className="peer sr-only"
+                                    />
+                                    <div className="peer h-5 w-10 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-indigo-600 peer-checked:after:translate-x-5" />
+                                  </label>
+                                )}
+                                <span className="rounded-md bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200">
+                                  {keys.length}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              {keys.map((key) => (
+                                <div
+                                  key={key}
+                                  className="flex items-center justify-between gap-3 rounded-lg border border-slate-200/80 bg-white px-3 py-2.5"
+                                >
+                                  <p className="min-w-0 flex-1 text-sm font-medium text-slate-900">
+                                    {formatModuleLabel(key, section.key)}
+                                  </p>
+                                  <select
+                                    value={moduleAccess[key] || "NONE"}
+                                    onChange={(e) => handleModuleAccessChange(key, e.target.value)}
+                                    className="min-w-[90px] rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold tracking-wide text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                  >
+                                    <option value="NONE">NONE</option>
+                                    <option value="VIEW">VIEW</option>
+                                    <option value="FULL">FULL</option>
+                                  </select>
+                                </div>
+                              ))}
+                              {keys.length === 0 && <p className="px-1 py-1 text-sm text-slate-400">No modules.</p>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {(modulesBySection[section.key] || []).map((key) => (
+                        <div
+                          key={key}
+                          className="flex items-center justify-between gap-4 rounded-xl border border-slate-200/80 bg-slate-50/70 px-3.5 py-3"
                         >
-                          <option value="NONE">NONE</option>
-                          <option value="VIEW">VIEW</option>
-                          <option value="FULL">FULL</option>
-                        </select>
-                      </div>
-                    ))}
-                    {(modulesBySection[section.key] || []).length === 0 && (
-                      <p className="px-1 py-1 text-sm text-slate-400">No modules.</p>
-                    )}
-                  </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-slate-900">
+                              {formatModuleLabel(key, section.key)}
+                            </p>
+                          </div>
+                          <select
+                            value={moduleAccess[key] || "NONE"}
+                            onChange={(e) => handleModuleAccessChange(key, e.target.value)}
+                            className="min-w-[100px] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold tracking-wide text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          >
+                            <option value="NONE">NONE</option>
+                            <option value="VIEW">VIEW</option>
+                            <option value="FULL">FULL</option>
+                          </select>
+                        </div>
+                      ))}
+                      {(modulesBySection[section.key] || []).length === 0 && (
+                        <p className="px-1 py-1 text-sm text-slate-400">No modules.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
