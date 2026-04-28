@@ -2,7 +2,11 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 ## Getting Started..............
+=======
+## Getting Started................
+>>>>>>> c23c5194360f36527394a06b26be4217a239f119
 =======
 ## Getting Started.....
 >>>>>>> c2af8f1ad2bea4a39633727204c4963ca35b335d

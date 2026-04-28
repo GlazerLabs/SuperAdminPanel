@@ -162,20 +162,27 @@ export default function HelpFaqPage() {
         firstBlock?.total,
         firstBlock?.totalCount,
         firstBlock?.total_count,
+        meta.total,
         meta.totalCount,
         meta.total_count,
+        root?.total,
         root?.totalCount,
         root?.total_count
       );
       const serverPage = pickNumber(firstBlock?.page, meta.page, root?.page) ?? page;
+      const apiCategoryCount = meta?.category_count && typeof meta.category_count === "object" ? meta.category_count : null;
 
       setFaqRows((prev) => (shouldAppend ? [...prev, ...rows] : rows));
       setFaqPage(serverPage);
       setHasMoreFaqs(total !== null ? serverPage * PAGE_LIMIT < total : rows.length === PAGE_LIMIT);
-      setCountsByCategory((prev) => ({
-        ...prev,
-        [activeCategory]: total !== null ? total : shouldAppend ? (prev[activeCategory] || 0) + rows.length : rows.length,
-      }));
+      setCountsByCategory((prev) =>
+        apiCategoryCount
+          ? { ...prev, ...apiCategoryCount }
+          : {
+              ...prev,
+              [activeCategory]: total !== null ? total : shouldAppend ? (prev[activeCategory] || 0) + rows.length : rows.length,
+            }
+      );
     } catch (error) {
       setActionError(error?.message || "Failed to load FAQs.");
       if (!shouldAppend) setFaqRows([]);
