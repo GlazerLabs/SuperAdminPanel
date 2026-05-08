@@ -36,6 +36,18 @@ const formatModuleLabel = (moduleKey = "") => {
 const secondaryNav = [
   { label: "Settings", href: "/settings", icon: "settings" },
   {
+    label: "App Analytics",
+    href: "/app-analytics",
+    icon: "analytics",
+    matchPrefix: true,
+    children: [
+      { label: "User Details", href: "/app-analytics/user-details/dau", icon: "users", matchPrefix: true },
+      { label: "Install", href: "/app-analytics/installs", icon: "download", matchPrefix: true },
+      { label: "Link Creation", href: "/app-analytics/link-creation", icon: "link", matchPrefix: true },
+      { label: "All Events", href: "/app-analytics/events", icon: "events", matchPrefix: true },
+    ],
+  },
+  {
     label: "Help & Support",
     href: "/help",
     icon: "help",
@@ -115,6 +127,15 @@ function NavIcon({ type, active }) {
           <circle cx="12" cy="16" r="0.7" />
         </svg>
       );
+    case "analytics":
+      return (
+        <svg viewBox="0 0 24 24" className={base} fill="none" aria-hidden="true">
+          <path d="M4 19h16" />
+          <rect x="6" y="10" width="2.5" height="7" rx="1" />
+          <rect x="11" y="7" width="2.5" height="10" rx="1" />
+          <rect x="16" y="5" width="2.5" height="12" rx="1" />
+        </svg>
+      );
     case "logout":
       return (
         <svg viewBox="0 0 24 24" className={base} fill="none" aria-hidden="true">
@@ -145,6 +166,42 @@ function SubNavIcon({ type, active }) {
           <circle cx="12" cy="12" r="8" />
           <path d="M10.5 9.5a1.9 1.9 0 1 1 3 1.6c-.8.5-1.5 1-1.5 2" />
           <circle cx="12" cy="16" r="0.7" />
+        </svg>
+      );
+    case "users":
+      return (
+        <svg viewBox="0 0 24 24" className={base} fill="none" aria-hidden="true">
+          <circle cx="8" cy="8" r="2.5" />
+          <circle cx="16" cy="8" r="2.5" />
+          <path d="M4.5 18c0-2.2 1.8-4 4-4s4 1.8 4 4" />
+          <path d="M12.5 18c0-2.2 1.8-4 4-4s4 1.8 4 4" />
+        </svg>
+      );
+    case "download":
+      return (
+        <svg viewBox="0 0 24 24" className={base} fill="none" aria-hidden="true">
+          <path d="M12 4v10" />
+          <path d="M8.5 10.5 12 14l3.5-3.5" />
+          <path d="M5 19h14" />
+        </svg>
+      );
+    case "link":
+      return (
+        <svg viewBox="0 0 24 24" className={base} fill="none" aria-hidden="true">
+          <path d="M10 8H7a4 4 0 0 0 0 8h3" />
+          <path d="M14 8h3a4 4 0 0 1 0 8h-3" />
+          <path d="M8 12h8" />
+        </svg>
+      );
+    case "events":
+      return (
+        <svg viewBox="0 0 24 24" className={base} fill="none" aria-hidden="true">
+          <path d="M5 6h14" />
+          <path d="M5 12h14" />
+          <path d="M5 18h14" />
+          <circle cx="8" cy="6" r="1" />
+          <circle cx="14" cy="12" r="1" />
+          <circle cx="10" cy="18" r="1" />
         </svg>
       );
     default:

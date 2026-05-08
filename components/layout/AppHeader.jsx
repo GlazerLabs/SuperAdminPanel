@@ -20,6 +20,10 @@ const titleMap = {
   "/members/super-admin": "Members",
   "/tournaments": "Tournaments",
   "/tracking": "User Tracking",
+  "/app-analytics": "App Analytics",
+  "/app-analytics/active-users": "App Analytics",
+  "/app-analytics/installs": "App Analytics",
+  "/app-analytics/link-creation": "App Analytics",
 };
 
 export default function AppHeader() {
@@ -98,6 +102,8 @@ export default function AppHeader() {
       ? "Members"
     : pathname?.startsWith("/help/tickets/")
       ? "Support Chat"
+      : pathname?.startsWith("/app-analytics")
+        ? "App Analytics"
       : pathname?.startsWith("/tournaments")
         ? "Tournaments"
         : "Dashboard");
