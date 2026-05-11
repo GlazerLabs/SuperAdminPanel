@@ -24,6 +24,61 @@ const METRIC_OPTIONS = [
   { label: "WAU", value: "wau" },
   { label: "MAU", value: "mau" },
 ];
+const FUNNEL_TEMPLATES = [
+  {
+    id: "sign-with-mobile-number",
+    label: "Sign with mobile number",
+    steps: [
+      "APP_INSTALLED",
+      "APP_OPENED",
+      "LOGIN_SCREEN_OPENED",
+      "LOGIN_WITH_MOBILE_NUMBER",
+      "OTP_SCREEN_OPENED",
+      "OTP_VERIFICATION_SUCCESS",
+      "OTP_VERIFICATION_FAILED",
+    ],
+  },
+  {
+    id: "sign-up-with-email",
+    label: "Sign up with email",
+    steps: [
+      "APP_INSTALLED",
+      "APP_OPENED",
+      "LOGIN_SCREEN_OPENED",
+      "LOGIN_WITH_GOOGLE",
+      "OTP_SCREEN_OPENED",
+      "OTP_VERIFICATION_SUCCESS",
+      "OTP_VERIFICATION_FAILED",
+    ],
+  },
+  {
+    id: "sign-up-with-apple",
+    label: "Sign up with apple",
+    steps: [
+      "APP_INSTALLED",
+      "APP_OPENED",
+      "LOGIN_SCREEN_OPENED",
+      "LOGIN_WITH_APPLE",
+      "OTP_SCREEN_OPENED",
+      "OTP_VERIFICATION_SUCCESS",
+      "OTP_VERIFICATION_FAILED",
+    ],
+  },
+  {
+    id: "profile-creation",
+    label: "Profile creation",
+    steps: [
+      "USER_DETAILS_SCREEN_OPENED",
+      "USER_DETAILS_FILLED_SUCCESS",
+      "LOOK_DESIGN_SCREEN_OPENED",
+      "PROFILE_UPLOAD_SUCCESS",
+      "GAME_SELECTION_SCREEN_OPENED",
+      "GAME_SELECTION_SUCCESS",
+      "BONOS_SCREEN_OPENED",
+      "SIGN_UP_BONUS_EARNED",
+    ],
+  },
+];
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const ShimmerCard = ({ accent = "bg-indigo-500/10" }) => (
@@ -231,6 +286,7 @@ export default function EventsFunnelPage() {
 
   const [stagePickerValue, setStagePickerValue] = useState("");
   const [funnelStagesSelected, setFunnelStagesSelected] = useState([]);
+  const [selectedFunnelTemplateId, setSelectedFunnelTemplateId] = useState("");
   const [funnelRows, setFunnelRows] = useState([]);
   const [funnelLoading, setFunnelLoading] = useState(false);
   const [funnelError, setFunnelError] = useState("");
@@ -324,7 +380,7 @@ export default function EventsFunnelPage() {
       setFunnelError("");
       try {
         const payload = {
-          identity: { primary: "sessionId", fallback: ["deviceId"] },
+          identity: { primary: "deviceId", fallback: ["userId"] },
           screenSteps: funnelStagesSelected,
           from: `${effectiveRange.from}-00-00`,
           filters: metricType ? { type: metricType, to: `${effectiveRange.to}-23-59` } : { to: `${effectiveRange.to}-23-59` },
@@ -464,6 +520,26 @@ export default function EventsFunnelPage() {
           <div className="rounded-2xl bg-white p-5 shadow-md ring-1 ring-indigo-100/60">
             <h3 className="text-lg font-semibold text-slate-900">Build Funnel</h3>
             <p className="mt-1 text-sm text-slate-600">Pick ordered events (2 or more) to compare drop-off in one API call.</p>
+
+            <div className="mt-4 flex gap-2">
+              <select
+                value={selectedFunnelTemplateId}
+                onChange={(e) => {
+                  const nextTemplateId = e.target.value;
+                  setSelectedFunnelTemplateId(nextTemplateId);
+                  const selectedTemplate = FUNNEL_TEMPLATES.find((template) => template.id === nextTemplateId);
+                  if (!selectedTemplate) return;
+                  setFunnelStagesSelected(selectedTemplate.steps);
+                  setStagePickerValue(selectedTemplate.steps[0] || "");
+                }}
+                className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+              >
+                <option value="">Select prebuilt funnel</option>
+                {FUNNEL_TEMPLATES.map((template) => (
+                  <option key={template.id} value={template.id}>{template.label}</option>
+                ))}
+              </select>
+            </div>
 
             <div className="mt-4 flex gap-2">
               <select value={stagePickerValue} onChange={(e) => setStagePickerValue(e.target.value)} className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
