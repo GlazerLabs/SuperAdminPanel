@@ -21,6 +21,18 @@ const ALL_PRIMARY_NAV = [
   { label: "Role Management", href: "/roles", icon: "shield", matchPrefix: true },
   { label: "Tournaments", href: "/tournaments", icon: "trophy" },
   { label: "Lead Tracking", href: "/leads", icon: "activity", matchPrefix: true },
+  {
+    label: "App Analytics",
+    href: "/app-analytics",
+    icon: "analytics",
+    matchPrefix: true,
+    children: [
+      { label: "User Details", href: "/app-analytics/user-details/dau", icon: "users", matchPrefix: true },
+      { label: "Install", href: "/app-analytics/installs", icon: "download", matchPrefix: true },
+      { label: "Link Creation", href: "/app-analytics/link-creation", icon: "link", matchPrefix: true },
+      { label: "All Events", href: "/app-analytics/events", icon: "events", matchPrefix: true },
+    ],
+  },
   { label: "Activity Logs", href: "/tracking", icon: "logs" },
 ];
 
@@ -35,18 +47,6 @@ const formatModuleLabel = (moduleKey = "") => {
 
 const secondaryNav = [
   { label: "Settings", href: "/settings", icon: "settings" },
-  {
-    label: "App Analytics",
-    href: "/app-analytics",
-    icon: "analytics",
-    matchPrefix: true,
-    children: [
-      { label: "User Details", href: "/app-analytics/user-details/dau", icon: "users", matchPrefix: true },
-      { label: "Install", href: "/app-analytics/installs", icon: "download", matchPrefix: true },
-      { label: "Link Creation", href: "/app-analytics/link-creation", icon: "link", matchPrefix: true },
-      { label: "All Events", href: "/app-analytics/events", icon: "events", matchPrefix: true },
-    ],
-  },
   {
     label: "Help & Support",
     href: "/help",

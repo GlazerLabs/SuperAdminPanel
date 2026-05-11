@@ -41,12 +41,12 @@ const formatShortDate = (iso) => {
 
 const normalizeInstallsRows = (response) => {
   const payload = response?.data ?? response;
-  const rows = payload?.rows ?? payload?.data ?? payload?.points ?? (Array.isArray(payload) ? payload : []);
+  const rows = payload?.days ?? payload?.rows ?? payload?.data ?? payload?.points ?? (Array.isArray(payload) ? payload : []);
   if (!Array.isArray(rows)) return [];
 
   return rows
     .map((row) => {
-      const isoDate = String(row?.date ?? row?.period ?? row?.bucket ?? "").trim();
+      const isoDate = String(row?.day ?? row?.date ?? row?.period ?? row?.bucket ?? "").trim();
       const installs = Number(row?.installs ?? row?.count ?? row?.value ?? 0) || 0;
       if (!isoDate) return null;
       return { isoDate, date: formatShortDate(isoDate), installs };

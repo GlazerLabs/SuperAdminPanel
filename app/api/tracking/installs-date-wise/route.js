@@ -11,59 +11,32 @@ const buildQueryString = (req) => {
   return sp.toString();
 };
 
-const buildCandidateUrls = (baseUrl, qs) => {
-  const suffix = qs ? `?${qs}` : "";
-  return [
-    `${baseUrl}/events/apps/installed/date-wise${suffix}`,
-    `${baseUrl}/installs-date-wise${suffix}`,
-    `http://localhost:3001/api/installs-date-wise${suffix}`,
-  ];
-};
-
 export async function GET(req) {
   try {
-    const baseUrl = String(process.env.TRACKING_BASE_URL || "").trim().replace(/\/$/, "");
+    const baseUrl = String(process.env.TRACKING_BASE_URL || process.env.NEXT_PUBLIC_TRACKING_BASE_URL || "").trim().replace(/\/$/, "");
     if (!baseUrl) throw new Error("Missing TRACKING_BASE_URL");
 
-    const apiKey = String(process.env.TRACKING_API_KEY || "").trim();
+    const apiKey = String(process.env.TRACKING_API_KEY || process.env.NEXT_PUBLIC_TRACKING_API_KEY || "").trim();
     const qs = buildQueryString(req);
-    const candidates = buildCandidateUrls(baseUrl, qs);
+    const suffix = qs ? `?${qs}` : "";
 
     const headers = { Accept: "application/json" };
-    if (apiKey) headers["x-api-key"] = apiKey;
+    if (apiKey) headers["X-API-Key"] = apiKey;
 
-    let lastStatus = 500;
-    let lastText = "";
-    let lastContentType = "application/json";
+    const url = `${baseUrl}/events/app-installed/date-wise${suffix}`;
 
-    for (const url of candidates) {
-      const upstream = await fetch(url, { method: "GET", headers, cache: "no-store" });
-      const text = await upstream.text();
-      const contentType = upstream.headers.get("content-type") || "application/json";
+    const upstream = await fetch(url, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    });
 
-      if (upstream.ok) {
-        return new NextResponse(text, {
-          status: upstream.status,
-          headers: { "content-type": contentType },
-        });
-      }
+    const text = await upstream.text();
+    const contentType = upstream.headers.get("content-type") || "application/json";
 
-      // Stop trying alternatives for non-404 failures.
-      if (upstream.status !== 404) {
-        return new NextResponse(text, {
-          status: upstream.status,
-          headers: { "content-type": contentType },
-        });
-      }
-
-      lastStatus = upstream.status;
-      lastText = text;
-      lastContentType = contentType;
-    }
-
-    return new NextResponse(lastText || JSON.stringify({ error: "Installs endpoint not found" }), {
-      status: lastStatus,
-      headers: { "content-type": lastContentType },
+    return new NextResponse(text, {
+      status: upstream.status,
+      headers: { "content-type": contentType },
     });
   } catch (error) {
     return NextResponse.json(
