@@ -2,9 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Bar,
-  BarChart,
-  Cell,
+  Area,
+  AreaChart,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
@@ -200,23 +199,19 @@ export default function InstallsPage() {
             <div className="flex h-full items-center justify-center text-sm font-medium text-red-500">{error}</div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={installsData} margin={{ top: 12, right: 16, left: 0, bottom: 4 }}>
+              <AreaChart data={installsData} margin={{ top: 12, right: 16, left: 0, bottom: 4 }}>
                 <defs>
-                  <linearGradient id="installBarGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#6366f1" stopOpacity={1} />
-                    <stop offset="100%" stopColor="#22d3ee" stopOpacity={0.95} />
+                  <linearGradient id="installAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#6366f1" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="#6366f1" stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="#eef2ff" strokeDasharray="3 3" />
                 <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: "#64748b", fontSize: 12 }} />
                 <YAxis domain={[(dataMin) => Math.max(0, dataMin - 40), (dataMax) => dataMax + 40]} tickLine={false} axisLine={false} tick={{ fill: "#64748b", fontSize: 12 }} />
-                <Tooltip content={<InstallTooltip />} cursor={{ fill: "#e2e8f0", fillOpacity: 0.35 }} />
-                <Bar dataKey="installs" name="Installs" fill="url(#installBarGradient)" radius={[12, 12, 4, 4]} barSize={28}>
-                  {installsData.map((row) => (
-                    <Cell key={row.isoDate} fill={row.installs === Math.max(...installsData.map((item) => item.installs)) ? "#4f46e5" : "url(#installBarGradient)"} />
-                  ))}
-                </Bar>
-              </BarChart>
+                <Tooltip content={<InstallTooltip />} />
+                <Area type="monotone" dataKey="installs" name="Installs" stroke="#6366f1" strokeWidth={2.5} fill="url(#installAreaGradient)" dot={{ r: 3, fill: "#6366f1", strokeWidth: 0 }} activeDot={{ r: 5, fill: "#4f46e5" }} />
+              </AreaChart>
             </ResponsiveContainer>
           )}
         </div>

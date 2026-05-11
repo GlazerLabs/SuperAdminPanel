@@ -16,6 +16,7 @@ import {
   fetchDynamicLinks,
   updateDynamicLink,
 } from "@/trackingDynamicLinksApi";
+import { getApi } from "@/api";
 
 function LinkClicksTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -54,6 +55,42 @@ const toLabel = (value = "") => {
   return v.charAt(0).toUpperCase() + v.slice(1);
 };
 
+const stripDomain = (url = "") => {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    return parsed.pathname + parsed.search;
+  } catch {
+    return raw;
+  }
+};
+
+const extractAppPath = (targetPath = "") => {
+  const raw = String(targetPath || "").trim();
+  if (!raw) return raw;
+  let path = raw;
+  if (raw.startsWith("http://") || raw.startsWith("https://")) {
+    try {
+      path = new URL(raw).pathname;
+    } catch {
+      path = raw;
+    }
+  }
+  const appIdx = path.indexOf("/app/");
+  if (appIdx !== -1) return path.slice(appIdx);
+  return path;
+};
+
+const CATEGORY_COLORS = {
+  tournament: { bg: "bg-violet-50", border: "border-violet-200", badge: "bg-violet-100 text-violet-700", accent: "text-violet-600" },
+  game: { bg: "bg-sky-50", border: "border-sky-200", badge: "bg-sky-100 text-sky-700", accent: "text-sky-600" },
+  profile: { bg: "bg-amber-50", border: "border-amber-200", badge: "bg-amber-100 text-amber-700", accent: "text-amber-600" },
+  other: { bg: "bg-slate-50", border: "border-slate-200", badge: "bg-slate-100 text-slate-700", accent: "text-slate-600" },
+};
+
+const getCategoryStyle = (category) => CATEGORY_COLORS[category] || CATEGORY_COLORS.other;
+
 const normalizeLinks = (response) => {
   const payload = response?.data ?? response;
   const links = Array.isArray(payload?.links) ? payload.links : Array.isArray(payload) ? payload : [];
@@ -85,6 +122,11 @@ const ShimmerStatCard = ({ accent = "bg-indigo-500/10" }) => (
   </div>
 );
 
+const extractTournamentId = (targetPath = "") => {
+  const match = String(targetPath || "").match(/\/tournament\/(\d+)/);
+  return match ? match[1] : null;
+};
+
 export default function LinkCreationPage() {
   const [links, setLinks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -99,6 +141,7 @@ export default function LinkCreationPage() {
   const [editSlug, setEditSlug] = useState("");
   const [deletingLink, setDeletingLink] = useState(null);
   const [selectedLink, setSelectedLink] = useState(null);
+  const [tournamentTitles, setTournamentTitles] = useState({});
 
   const loadLinks = async () => {
     setLoading(true);
@@ -117,6 +160,34 @@ export default function LinkCreationPage() {
   useEffect(() => {
     loadLinks();
   }, []);
+
+  useEffect(() => {
+    if (!links.length) return;
+    let mounted = true;
+
+    const ids = [...new Set(links.map((l) => extractTournamentId(l.target)).filter(Boolean))];
+    if (!ids.length) return;
+
+    (async () => {
+      const titles = {};
+      await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const res = await getApi("tournament", { tournament_id: Number(id) });
+            const arr = Array.isArray(res?.data) ? res.data : [];
+            const row = arr[0] || res?.data?.tournament || res?.data || {};
+            const title = row?.title || row?.name || null;
+            if (title) titles[id] = title;
+          } catch {
+            // silently skip
+          }
+        })
+      );
+      if (mounted) setTournamentTitles((prev) => ({ ...prev, ...titles }));
+    })();
+
+    return () => { mounted = false; };
+  }, [links]);
 
   const performanceData = useMemo(() => {
     const bucket = new Map();
@@ -266,9 +337,12 @@ export default function LinkCreationPage() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-indigo-100/60">
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/90 px-4 py-3">
-          <h4 className="text-sm font-semibold uppercase tracking-wide text-indigo-900">Generated Links</h4>
+      <section className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">Generated Links</h3>
+            <p className="text-sm text-slate-500">Grouped by category</p>
+          </div>
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">Total: {totalLinks}</span>
             <button type="button" onClick={() => setIsCreateOpen(true)} className="rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700">
@@ -277,50 +351,57 @@ export default function LinkCreationPage() {
           </div>
         </div>
 
-        <div className="space-y-3 p-4">
-          {loading ? (
-            <>
-              {Array.from({ length: 3 }).map((_, idx) => (
-                <article key={`shimmer-${idx}`} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm animate-pulse">
-                  <div className="h-6 w-40 rounded bg-slate-200" />
-                  <div className="mt-3 h-4 w-72 rounded bg-slate-200" />
-                  <div className="mt-4 h-4 w-56 rounded bg-slate-200" />
-                </article>
-              ))}
-            </>
-          ) : links.length === 0 ? (
-            <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-medium text-slate-500">No links found.</div>
-          ) : (
-            links.map((row) => (
-              <article
-                key={row.slug}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedLink(row)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") setSelectedLink(row);
-                }}
-                className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-xl font-semibold tracking-tight text-slate-900">/l/{row.slug}</p>
-                    <p className="mt-1 truncate text-sm text-slate-600">{row.target}</p>
+        {loading ? (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <div key={`shimmer-${idx}`} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm animate-pulse">
+                <div className="h-5 w-24 rounded bg-slate-200" />
+                <div className="mt-3 h-4 w-full rounded bg-slate-200" />
+                <div className="mt-2 h-4 w-3/4 rounded bg-slate-200" />
+              </div>
+            ))}
+          </div>
+        ) : links.length === 0 ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-medium text-slate-500">No links found.</div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {links.map((row) => {
+              const style = getCategoryStyle(row.category);
+              const tId = extractTournamentId(row.target);
+              const tTitle = tId ? tournamentTitles[tId] : null;
+              return (
+                <article
+                  key={row.slug}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedLink(row)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setSelectedLink(row); }}
+                  className={`cursor-pointer rounded-2xl border ${style.border} ${style.bg} p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.01]`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      {tTitle ? (
+                        <p className="truncate text-sm font-bold text-slate-900">{tTitle}</p>
+                      ) : null}
+                      <p className={`truncate text-sm ${tTitle ? "text-slate-500" : `font-bold ${style.accent}`}`}>{extractAppPath(row.target)}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${row.isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-700"}`}>
+                      {row.status}
+                    </span>
                   </div>
-                  <span className={`rounded-full px-2 py-1 text-xs font-semibold ${row.isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-700"}`}>
-                    {row.status}
-                  </span>
-                </div>
 
-                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-600">
-                  <span>Category: {toLabel(row.category)}</span>
-                  <span>Clicks: {row.clicks}</span>
-                  <span>Updated: {row.updatedAt}</span>
-                </div>
-              </article>
-            ))
-          )}
-        </div>
+                  <div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-500">
+                    <span className="truncate font-medium text-slate-700">/l/{row.slug}</span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="rounded-full bg-white px-2 py-0.5 font-bold text-slate-900 shadow-sm ring-1 ring-slate-200">{row.clicks} click{row.clicks !== 1 ? "s" : ""}</span>
+                      <span className={`rounded-full px-2 py-0.5 font-bold uppercase ${style.badge}`}>{toLabel(row.category)}</span>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {isCreateOpen ? (
