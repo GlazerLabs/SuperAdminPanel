@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList } from "recharts";
-import { getApi } from "@/api";
+import { getApi, deleteApi } from "@/api";
 import { useLeadFormStore } from "@/zustand/leadForm";
 
 const STATUS_OPTIONS = [
@@ -271,6 +271,29 @@ export default function LeadTrackingPage() {
   const [errors, setErrors] = useState({});
   const [updateErrors, setUpdateErrors] = useState({});
   const [savedMessage, setSavedMessage] = useState("");
+  const [deletingLeadId, setDeletingLeadId] = useState(null);
+
+  const handleDeleteLead = async (e, leadId, leadBrand) => {
+    e.stopPropagation();
+    if (!leadId || deletingLeadId) return;
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${leadBrand || `Lead #${leadId}`}"? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeletingLeadId(leadId);
+    try {
+      await deleteApi(`lead-tracking/${leadId}`);
+      setLeads((prev) => prev.filter((l) => l.id !== leadId));
+      setSavedMessage("Lead deleted successfully.");
+      setTimeout(() => setSavedMessage(""), 3000);
+    } catch (err) {
+      console.error("Failed to delete lead:", err);
+      alert(err?.message || "Failed to delete lead. Please try again.");
+    } finally {
+      setDeletingLeadId(null);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -786,7 +809,7 @@ export default function LeadTrackingPage() {
                 <th className="px-4 py-2.5">Channel</th>
                 <th className="px-4 py-2.5">Region</th>
                 <th className="px-4 py-2.5 text-right">Est. value</th>
-                <th className="px-4 py-2.5 text-right w-24">Actions</th>
+                <th className="px-4 py-2.5 text-right w-28">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -881,31 +904,65 @@ export default function LeadTrackingPage() {
                         {formatRevenue(approxRevenue)}
                       </td>
                       <td className="px-4 py-2.5 text-right">
-                        <button
-                          type="button"
-                          title="Edit lead in multi-step editor"
-                          aria-label="Edit lead"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            useLeadFormStore.getState().openLeadForm(row);
-                            router.push("/leads/new");
-                          }}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-100 bg-indigo-50/70 text-indigo-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-indigo-100 hover:text-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden="true"
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            title="Edit lead in multi-step editor"
+                            aria-label="Edit lead"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              useLeadFormStore.getState().openLeadForm(row);
+                              router.push("/leads/new");
+                            }}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-100 bg-indigo-50/70 text-indigo-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-indigo-100 hover:text-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                           >
-                            <path d="M12 20h9" />
-                            <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                          </svg>
-                        </button>
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M12 20h9" />
+                              <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            title="Delete lead"
+                            aria-label="Delete lead"
+                            disabled={deletingLeadId === row.id}
+                            onClick={(e) => handleDeleteLead(e, row.id, row.brand || row.activityName)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-100 bg-rose-50/70 text-rose-600 shadow-sm transition-all hover:-translate-y-0.5 hover:border-rose-200 hover:bg-rose-100 hover:text-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 disabled:opacity-50"
+                          >
+                            {deletingLeadId === row.id ? (
+                              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+                                <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
+                              </svg>
+                            ) : (
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="M3 6h18" />
+                                <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                                <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+                                <path d="M10 11v6" />
+                                <path d="M14 11v6" />
+                              </svg>
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

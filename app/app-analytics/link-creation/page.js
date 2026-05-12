@@ -142,6 +142,7 @@ export default function LinkCreationPage() {
   const [deletingLink, setDeletingLink] = useState(null);
   const [selectedLink, setSelectedLink] = useState(null);
   const [tournamentTitles, setTournamentTitles] = useState({});
+  const [copiedSlug, setCopiedSlug] = useState(null);
 
   const loadLinks = async () => {
     setLoading(true);
@@ -352,52 +353,111 @@ export default function LinkCreationPage() {
         </div>
 
         {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, idx) => (
-              <div key={`shimmer-${idx}`} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm animate-pulse">
-                <div className="h-5 w-24 rounded bg-slate-200" />
-                <div className="mt-3 h-4 w-full rounded bg-slate-200" />
-                <div className="mt-2 h-4 w-3/4 rounded bg-slate-200" />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, idx) => (
+              <div key={`shimmer-${idx}`} className="rounded-2xl bg-white p-4 shadow-md ring-1 ring-slate-200/60 animate-pulse">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-10 w-10 rounded-xl bg-slate-200" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-4 w-28 rounded bg-slate-200" />
+                    <div className="h-3 w-16 rounded bg-slate-200" />
+                  </div>
+                </div>
+                <div className="mt-4 h-3 w-10 rounded bg-slate-200" />
+                <div className="mt-1.5 h-9 rounded-lg bg-slate-100" />
+                <div className="mt-3 h-9 rounded-lg bg-slate-100" />
               </div>
             ))}
           </div>
         ) : links.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-medium text-slate-500">No links found.</div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {links.map((row) => {
-              const style = getCategoryStyle(row.category);
               const tId = extractTournamentId(row.target);
               const tTitle = tId ? tournamentTitles[tId] : null;
+              const displayName = tTitle || extractAppPath(row.target);
+              const linkPath = stripDomain(row.shortUrl);
+              const isCopied = copiedSlug === row.slug;
+
+              const handleCopyLink = () => {
+                navigator.clipboard.writeText(row.shortUrl || "");
+                setCopiedSlug(row.slug);
+                setTimeout(() => setCopiedSlug((prev) => (prev === row.slug ? null : prev)), 2000);
+              };
+
               return (
-                <article
-                  key={row.slug}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setSelectedLink(row)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setSelectedLink(row); }}
-                  className={`cursor-pointer rounded-2xl border ${style.border} ${style.bg} p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.01]`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      {tTitle ? (
-                        <p className="truncate text-sm font-bold text-slate-900">{tTitle}</p>
-                      ) : null}
-                      <p className={`truncate text-sm ${tTitle ? "text-slate-500" : `font-bold ${style.accent}`}`}>{extractAppPath(row.target)}</p>
+                <div key={row.slug} className="rounded-2xl bg-white p-4 shadow-md ring-1 ring-slate-200/60 transition-shadow hover:shadow-lg">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500 shadow shadow-indigo-200">
+                      <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+                      </svg>
                     </div>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${row.isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-700"}`}>
-                      {row.status}
-                    </span>
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-bold text-slate-900">{displayName}</h3>
+                      <p className="text-xs font-semibold uppercase text-slate-400">{toLabel(row.category)}</p>
+                    </div>
                   </div>
 
-                  <div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-500">
-                    <span className="truncate font-medium text-slate-700">/l/{row.slug}</span>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className="rounded-full bg-white px-2 py-0.5 font-bold text-slate-900 shadow-sm ring-1 ring-slate-200">{row.clicks} click{row.clicks !== 1 ? "s" : ""}</span>
-                      <span className={`rounded-full px-2 py-0.5 font-bold uppercase ${style.badge}`}>{toLabel(row.category)}</span>
+                  <div className="mt-4">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Link</p>
+                    <div className="mt-1.5 flex items-center justify-between rounded-lg bg-indigo-50 px-3 py-2">
+                      <span className="truncate text-xs font-medium text-indigo-600">{linkPath}</span>
+                      <button
+                        type="button"
+                        onClick={handleCopyLink}
+                        className="ml-1.5 shrink-0 rounded p-1 text-indigo-300 transition-colors hover:bg-indigo-100 hover:text-indigo-500"
+                      >
+                        {isCopied ? (
+                          <svg className="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                          </svg>
+                        ) : (
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+                          </svg>
+                        )}
+                      </button>
                     </div>
+                    {isCopied ? (
+                      <p className="mt-1 text-[10px] font-semibold text-emerald-600">Link copied!</p>
+                    ) : null}
                   </div>
-                </article>
+
+                  <div className="mt-3 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <svg className="h-4 w-4 text-indigo-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
+                      </svg>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Registrations</span>
+                    </div>
+                    <span className="text-sm font-bold text-slate-900">{row.clicks}</span>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => openUpdateModal(row)}
+                      title="Edit"
+                      className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeletingLink(row)}
+                      title="Delete"
+                      className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -443,52 +503,6 @@ export default function LinkCreationPage() {
               <button type="button" onClick={() => setIsCreateOpen(false)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
               <button type="button" disabled={saving} onClick={onCreate} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50">
                 {saving ? "Saving..." : "Create Link"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {selectedLink ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4">
-          <div className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">Link Details</p>
-                <h4 className="text-xl font-bold text-slate-900">/l/{selectedLink.slug}</h4>
-              </div>
-              <button type="button" onClick={() => setSelectedLink(null)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Close</button>
-            </div>
-
-            <div className="grid gap-3 px-5 py-5 sm:grid-cols-2 text-sm">
-              <p><span className="font-semibold text-slate-700">Target:</span> <span className="text-slate-600 break-all">{selectedLink.target}</span></p>
-              <p><span className="font-semibold text-slate-700">Short URL:</span> <span className="text-indigo-700 break-all">{selectedLink.shortUrl}</span></p>
-              <p><span className="font-semibold text-slate-700">Category:</span> <span className="text-slate-600">{toLabel(selectedLink.category)}</span></p>
-              <p><span className="font-semibold text-slate-700">Clicks:</span> <span className="text-slate-600">{selectedLink.clicks}</span></p>
-              <p><span className="font-semibold text-slate-700">Created:</span> <span className="text-slate-600">{selectedLink.createdAt}</span></p>
-              <p><span className="font-semibold text-slate-700">Updated:</span> <span className="text-slate-600">{selectedLink.updatedAt}</span></p>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedLink(null);
-                  openUpdateModal(selectedLink);
-                }}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Update
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedLink(null);
-                  setDeletingLink(selectedLink);
-                }}
-                className="rounded-xl border border-rose-100 px-4 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
-              >
-                Delete
               </button>
             </div>
           </div>
