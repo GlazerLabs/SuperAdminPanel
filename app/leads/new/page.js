@@ -1645,16 +1645,17 @@ export default function NewLeadPage() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Priority</label>
+                  <label className="block text-sm font-medium text-slate-700">Lead Status</label>
                   <select
                     value={lead.priority}
                     onChange={handleChange("priority")}
                     className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   >
-                    <option value="">Select priority</option>
-                    <option value="High">High</option>
-                    <option value="Medium">Medium</option>
-                    <option value="Low">Low</option>
+                    <option value="">Select lead status</option>
+                    <option value="Hot">Hot</option>
+                    <option value="Warm">Warm</option>
+                    <option value="Cold">Cold</option>
+                    <option value="Not Interested">Not Interested</option>
                   </select>
                 </div>
               </div>

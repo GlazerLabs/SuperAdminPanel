@@ -230,8 +230,7 @@ function formatCompactIndian(value) {
   const absNum = Math.abs(num);
   const formatUnit = (divisor, suffix) => {
     const scaled = num / divisor;
-    const rounded = Number(scaled.toFixed(1));
-    return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)}${suffix}`;
+    return `${scaled.toFixed(2)}${suffix}`;
   };
 
   if (absNum >= 10000000) return formatUnit(10000000, "Cr");
@@ -1196,17 +1195,18 @@ export default function LeadTrackingPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700">
-                  Priority
+                  Lead Status
                 </label>
                 <select
                   value={lead.priority}
                   onChange={handleChange("priority")}
                   className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 >
-                  <option value="">Select priority</option>
-                  <option value="High">High</option>
-                  <option value="Medium">Medium</option>
-                  <option value="Low">Low</option>
+                  <option value="">Select lead status</option>
+                  <option value="Hot">Hot</option>
+                  <option value="Warm">Warm</option>
+                  <option value="Cold">Cold</option>
+                  <option value="Not Interested">Not Interested</option>
                 </select>
               </div>
                   <div className="md:col-span-2">
