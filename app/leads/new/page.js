@@ -792,84 +792,88 @@ export default function NewLeadPage() {
         subfolder.toLowerCase()
       ] || subfolder;
 
-    const form = new FormData();
-    form.append("file", file);
-    form.append("subfolder", subfolder);
-    form.append("leadName", leadName);
+    setUploadProgress({ percent: 0, fileName: file.name, subfolder: normalizedSubfolder, stage: "Preparing folder…" });
 
-    setUploadProgress({ percent: 0, fileName: file.name, subfolder: normalizedSubfolder, stage: "sending" });
+    const sessionRes = await fetch(`/api/leads/${leadId}/upload-session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileName: file.name, subfolder, leadName, fileSize: file.size }),
+    });
+    const sessionData = await sessionRes.json().catch(() => ({}));
+    if (!sessionRes.ok || !sessionData.uploadUrl) {
+      setUploadProgress(null);
+      throw new Error(sessionData?.error || "Failed to create upload session.");
+    }
 
-    const res = await fetch(`/api/leads/${leadId}/upload`, { method: "POST", body: form });
+    setUploadProgress((p) => ({ ...p, percent: 5, stage: "Uploading to OneDrive…" }));
 
-    if (res.headers.get("content-type")?.includes("text/event-stream")) {
-      const result = await new Promise((resolve, reject) => {
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
+    const uploadUrl = sessionData.uploadUrl;
+    const totalSize = file.size;
+    const CHUNK_320K = 320 * 1024;
+    const chunkSize = totalSize <= 10 * 1024 * 1024
+      ? CHUNK_320K * 5
+      : totalSize <= 100 * 1024 * 1024
+        ? CHUNK_320K * 10
+        : CHUNK_320K * 30;
 
-        function pump() {
-          reader.read().then(({ done, value }) => {
-            if (done) {
-              setUploadProgress(null);
-              reject(new Error("Upload stream ended without result."));
-              return;
-            }
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n\n");
-            buffer = lines.pop() || "";
+    let offset = 0;
+    let lastResult = null;
+    const totalChunks = Math.ceil(totalSize / chunkSize);
+    let chunkIndex = 0;
 
-            for (const line of lines) {
-              const match = line.match(/^data:\s*(.+)$/m);
-              if (!match) continue;
-              try {
-                const msg = JSON.parse(match[1]);
-                if (msg.type === "progress") {
-                  const stageLabel =
-                    msg.stage === "preparing" ? "Preparing folder…" :
-                    msg.stage === "creating_session" ? "Connecting to OneDrive…" :
-                    msg.stage === "uploading" ? "Uploading to OneDrive…" :
-                    msg.stage === "finalizing" ? "Finalizing…" : "Processing…";
-                  setUploadProgress({
-                    percent: msg.percent,
-                    fileName: file.name,
-                    subfolder: normalizedSubfolder,
-                    stage: stageLabel,
-                  });
-                } else if (msg.type === "done") {
-                  setUploadProgress(null);
-                  resolve(msg);
-                  return;
-                } else if (msg.type === "error") {
-                  setUploadProgress(null);
-                  reject(new Error(msg.error || "Upload failed."));
-                  return;
-                }
-              } catch { /* ignore parse errors */ }
-            }
-            pump();
-          }).catch((err) => {
-            setUploadProgress(null);
-            reject(err);
-          });
-        }
-        pump();
+    while (offset < totalSize) {
+      const end = Math.min(offset + chunkSize, totalSize);
+      const chunk = file.slice(offset, end);
+      const contentRange = `bytes ${offset}-${end - 1}/${totalSize}`;
+
+      const chunkRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Range": contentRange },
+        body: chunk,
       });
 
-      return (
-        (typeof result?.fileWebUrl === "string" && result.fileWebUrl.trim()) ||
-        (typeof result?.webUrl === "string" && result.webUrl.trim()) ||
-        ""
-      );
+      if (!chunkRes.ok && chunkRes.status !== 202) {
+        setUploadProgress(null);
+        const errText = await chunkRes.text().catch(() => "");
+        throw new Error(`Upload failed (${chunkRes.status}): ${errText}`);
+      }
+
+      if (chunkRes.status === 200 || chunkRes.status === 201) {
+        lastResult = await chunkRes.json().catch(() => ({}));
+      }
+
+      chunkIndex++;
+      const percent = Math.min(5 + Math.round((chunkIndex / totalChunks) * 90), 95);
+      setUploadProgress((p) => ({ ...p, percent, stage: "Uploading to OneDrive…" }));
+      offset = end;
+    }
+
+    const webUrl = (typeof lastResult?.webUrl === "string" && lastResult.webUrl.trim()) || "";
+    if (webUrl) {
+      setUploadProgress(null);
+      return webUrl;
+    }
+
+    setUploadProgress((p) => ({ ...p, percent: 96, stage: "Finalizing…" }));
+
+    if (lastResult?.id) {
+      try {
+        const urlRes = await fetch(`/api/leads/${leadId}/upload-session`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ itemId: lastResult.id }),
+        });
+        const urlData = await urlRes.json().catch(() => ({}));
+        setUploadProgress(null);
+        return (typeof urlData?.fileWebUrl === "string" && urlData.fileWebUrl.trim()) || "";
+      } catch {
+        setUploadProgress(null);
+        return "";
+      }
     }
 
     setUploadProgress(null);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || "File upload failed.");
-    return (
-      (typeof data?.fileWebUrl === "string" && data.fileWebUrl.trim()) ||
-      (typeof data?.webUrl === "string" && data.webUrl.trim()) ||
-      ""
-    );
+    return "";
   };
 
   const uploadProposalFileIfAny = async (leadId) => {
