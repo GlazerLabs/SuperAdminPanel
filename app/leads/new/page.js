@@ -324,6 +324,7 @@ export default function NewLeadPage() {
   const [sowUploadFile, setSowUploadFile] = useState(null);
   const [poUploadFile, setPoUploadFile] = useState(null);
   const [proposalUploadFile, setProposalUploadFile] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(null);
   const imageInputRef = useRef(null);
   const requestLockRef = useRef(false);
 
@@ -786,22 +787,87 @@ export default function NewLeadPage() {
   const uploadFileToSubfolder = async (leadId, file, subfolder = "Inwards") => {
     if (!leadId || !file) return "";
     const leadName = lead.brand || selectedLead?.brand || lead.activityName || selectedLead?.activity || `Lead-${leadId}`;
+    const normalizedSubfolder =
+      { inward: "Inward", inwards: "Inward", outward: "Outward", outwards: "Outward" }[
+        subfolder.toLowerCase()
+      ] || subfolder;
+
     const form = new FormData();
     form.append("file", file);
     form.append("subfolder", subfolder);
     form.append("leadName", leadName);
 
-    const uploadRes = await fetch(`/api/leads/${leadId}/upload`, {
-      method: "POST",
-      body: form,
-    });
-    const uploadData = await uploadRes.json().catch(() => ({}));
-    if (!uploadRes.ok) {
-      throw new Error(uploadData?.error || "File upload failed.");
+    setUploadProgress({ percent: 0, fileName: file.name, subfolder: normalizedSubfolder, stage: "sending" });
+
+    const res = await fetch(`/api/leads/${leadId}/upload`, { method: "POST", body: form });
+
+    if (res.headers.get("content-type")?.includes("text/event-stream")) {
+      const result = await new Promise((resolve, reject) => {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        function pump() {
+          reader.read().then(({ done, value }) => {
+            if (done) {
+              setUploadProgress(null);
+              reject(new Error("Upload stream ended without result."));
+              return;
+            }
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              const match = line.match(/^data:\s*(.+)$/m);
+              if (!match) continue;
+              try {
+                const msg = JSON.parse(match[1]);
+                if (msg.type === "progress") {
+                  const stageLabel =
+                    msg.stage === "preparing" ? "Preparing folder…" :
+                    msg.stage === "creating_session" ? "Connecting to OneDrive…" :
+                    msg.stage === "uploading" ? "Uploading to OneDrive…" :
+                    msg.stage === "finalizing" ? "Finalizing…" : "Processing…";
+                  setUploadProgress({
+                    percent: msg.percent,
+                    fileName: file.name,
+                    subfolder: normalizedSubfolder,
+                    stage: stageLabel,
+                  });
+                } else if (msg.type === "done") {
+                  setUploadProgress(null);
+                  resolve(msg);
+                  return;
+                } else if (msg.type === "error") {
+                  setUploadProgress(null);
+                  reject(new Error(msg.error || "Upload failed."));
+                  return;
+                }
+              } catch { /* ignore parse errors */ }
+            }
+            pump();
+          }).catch((err) => {
+            setUploadProgress(null);
+            reject(err);
+          });
+        }
+        pump();
+      });
+
+      return (
+        (typeof result?.fileWebUrl === "string" && result.fileWebUrl.trim()) ||
+        (typeof result?.webUrl === "string" && result.webUrl.trim()) ||
+        ""
+      );
     }
+
+    setUploadProgress(null);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || "File upload failed.");
     return (
-      (typeof uploadData?.fileWebUrl === "string" && uploadData.fileWebUrl.trim()) ||
-      (typeof uploadData?.webUrl === "string" && uploadData.webUrl.trim()) ||
+      (typeof data?.fileWebUrl === "string" && data.fileWebUrl.trim()) ||
+      (typeof data?.webUrl === "string" && data.webUrl.trim()) ||
       ""
     );
   };
@@ -852,8 +918,20 @@ export default function NewLeadPage() {
     try {
       if (!isEditMode) {
         if (currentStep === 1) {
-          const createResponse = await postApi("lead-tracking", buildCreatePayload());
-          const createdLeadId = await resolveCreatedLeadId(createResponse);
+          let createdLeadId = leadFlowState?.createdLeadId;
+          let createResponse = leadFlowState?.lastResponse;
+
+          if (!createdLeadId) {
+            createResponse = await postApi("lead-tracking", buildCreatePayload());
+            createdLeadId = await resolveCreatedLeadId(createResponse);
+            setLeadFlowState({
+              lastResponse: createResponse,
+              draft: lead,
+              createdLeadId,
+              nextstep: 1,
+            });
+          }
+
           const proposalLinkFromUpload = await uploadProposalFileIfAny(createdLeadId);
           if (proposalLinkFromUpload) {
             await putApi(`lead-tracking/${createdLeadId}`, {
@@ -2215,6 +2293,39 @@ export default function NewLeadPage() {
           </div>
         </div>
       </section>
+
+      {uploadProgress && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100">
+                <svg className="h-5 w-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-slate-900">Uploading file</h3>
+                <p className="truncate text-xs text-slate-500">
+                  {uploadProgress.fileName}
+                  {uploadProgress.subfolder ? ` → ${uploadProgress.subfolder}` : ""}
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-2 h-3 w-full overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-linear-to-r from-indigo-500 to-indigo-600 transition-all duration-500 ease-out"
+                style={{ width: `${uploadProgress.percent}%` }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-500">{uploadProgress.stage || "Processing…"}</span>
+              <span className="font-semibold text-indigo-600">{uploadProgress.percent}%</span>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
