@@ -186,10 +186,10 @@ export default function Home() {
   };
 
   const formatMinutes = (seconds) => {
-    const s = Number(seconds) || 0;
-    const totalMinutes = s / 60;
-    if (totalMinutes < 1) return `${Math.round(s)}s`;
-    return `${totalMinutes.toFixed(2)}m`;
+    const totalSeconds = Math.round(Number(seconds) || 0);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}:${String(secs).padStart(2, "0")}`;
   };
 
   const formatRangeForCopy = (rangeLabel) => {
