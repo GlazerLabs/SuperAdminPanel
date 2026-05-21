@@ -6,14 +6,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/zustand/auth";
 import { useModuleAccessStore } from "@/zustand/moduleAccess";
-
-const MODULE_NAV_MAP = {
-  super_lead_tracking: {
-    href: "/leads",
-    icon: "activity",
-    matchPrefix: true,
-  },
-};
+import {
+  buildNavFromModules,
+  MODULE_ROUTE_ORDER,
+  SUPER_ADMIN_MODULE_NAV,
+  SUPER_ADMIN_SECONDARY_MODULE_NAV,
+} from "@/lib/frontendAccess";
 
 const ALL_PRIMARY_NAV = [
   { label: "Dashboard", href: "/", icon: "grid" },
@@ -21,29 +19,20 @@ const ALL_PRIMARY_NAV = [
   { label: "Role Management", href: "/roles", icon: "shield", matchPrefix: true },
   { label: "Tournaments", href: "/tournaments", icon: "trophy" },
   { label: "Lead Tracking", href: "/leads", icon: "activity", matchPrefix: true },
-  {
-    label: "App Analytics",
-    href: "/app-analytics",
-    icon: "analytics",
-    matchPrefix: true,
-    children: [
-      { label: "User Details", href: "/app-analytics/user-details/dau", icon: "users", matchPrefix: true },
-      { label: "Install", href: "/app-analytics/installs", icon: "download", matchPrefix: true },
-      { label: "Link Creation", href: "/app-analytics/link-creation", icon: "link", matchPrefix: true },
-      { label: "All Events", href: "/app-analytics/events", icon: "events", matchPrefix: true },
-    ],
-  },
+  // {
+  //   label: "App Analytics",
+  //   href: "/app-analytics",
+  //   icon: "analytics",
+  //   matchPrefix: true,
+  //   children: [
+  //     { label: "User Details", href: "/app-analytics/user-details/dau", icon: "users", matchPrefix: true },
+  //     { label: "Install", href: "/app-analytics/installs", icon: "download", matchPrefix: true },
+  //     { label: "Link Creation", href: "/app-analytics/link-creation", icon: "link", matchPrefix: true },
+  //     { label: "All Events", href: "/app-analytics/events", icon: "events", matchPrefix: true },
+  //   ],
+  // },
   { label: "Activity Logs", href: "/tracking", icon: "logs" },
 ];
-
-const formatModuleLabel = (moduleKey = "") => {
-  const normalized = moduleKey.replace(/^super_/, "");
-  return normalized
-    .split("_")
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-};
 
 const secondaryNav = [
   { label: "Settings", href: "/settings", icon: "settings" },
@@ -336,18 +325,16 @@ export default function Sidebar() {
   const modules = myAccess?.data?.[0]?.frontend_modules || {};
   const primaryNav = implicitFullAccess
     ? ALL_PRIMARY_NAV
-    : Object.keys(modules)
-        .filter((moduleKey) => modules?.[moduleKey]?.read)
-        .map((moduleKey) => {
-          const mapped = MODULE_NAV_MAP[moduleKey] || {};
-          return {
-            label: formatModuleLabel(moduleKey),
-            href: mapped.href || "#",
-            icon: mapped.icon || "grid",
-            matchPrefix: mapped.matchPrefix || false,
-          };
-        })
-        .filter((item) => item.href !== "#");
+    : buildNavFromModules(modules, SUPER_ADMIN_MODULE_NAV, MODULE_ROUTE_ORDER);
+
+  const allowedSecondaryNav = implicitFullAccess
+    ? secondaryNav.filter((item) => item.action !== "logout")
+    : buildNavFromModules(
+        modules,
+        SUPER_ADMIN_SECONDARY_MODULE_NAV,
+        Object.keys(SUPER_ADMIN_SECONDARY_MODULE_NAV)
+      );
+  const othersNav = [...allowedSecondaryNav, secondaryNav.find((item) => item.action === "logout")];
 
   const handleLogout = () => {
     logout();
@@ -370,7 +357,7 @@ export default function Sidebar() {
         <NavSection title="Menu" items={primaryNav} pathname={pathname} />
         <NavSection
           title="Others"
-          items={secondaryNav}
+          items={othersNav}
           pathname={pathname}
           onLogout={handleLogout}
         />
