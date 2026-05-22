@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList } from "recharts";
 import { getApi, deleteApi } from "@/api";
 import { useLeadFormStore } from "@/zustand/leadForm";
+
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 20;
+const ENTRIES_OPTIONS = [10, 20, 50, 100];
+const STATS_FETCH_LIMIT = 500;
 
 const STATUS_OPTIONS = [
   "New",
@@ -209,6 +214,52 @@ function getLatestUpdate(updates) {
   })[0];
 }
 
+function mapApiLead(item) {
+  const latestUpdate = getLatestUpdate(item.lead_updates);
+
+  return {
+    ...item,
+    id: item.id,
+    brand: item.brand,
+    activityName: item.activity,
+    leadOwner: item.full_name || item.username || "Unknown",
+    currentStatus: item.current_status || item.stage || "New",
+    nextstep: Number(item.nextstep ?? item.next_step ?? 1) || 1,
+    nextFollowUpDate:
+      (latestUpdate?.next_follow_up_date || item.next_follow_up_date || "")?.slice(0, 10) || "",
+    primaryChannel: latestUpdate?.channel || item.lead_source || "",
+    nextStep: latestUpdate?.next_action || item.next_step || "",
+    cityRegion: item.city_region || "",
+    leadSource: item.lead_source || "",
+    mode: item.mode || "",
+    activityType: item.activity_type || "",
+    priority: item.priority || "",
+    primaryContactName: item.primary_contact || "",
+    phone: item.phone || "",
+    email: item.email || "",
+    role: item.designation || "",
+    decisionMakerName: item.decision_maker || "",
+    objective: item.current_status_summary || latestUpdate?.discussion_summary || "",
+    activityDate: item.expected_activity_date?.slice?.(0, 10) || "",
+    dependencies: latestUpdate?.dependencies || item.dependencies || "",
+    expectedRevenueType: "value",
+    expectedRevenueValue: latestUpdate?.value_after ?? item.expected_revenue ?? "",
+    expectedRevenueRange: "",
+    expectedExpenses: latestUpdate?.expense_after ?? item.expected_expenses ?? "",
+  };
+}
+
+function extractLeadsTotal(json, rowsLength) {
+  return (
+    Number(json?.total) ||
+    Number(json?.count) ||
+    Number(json?.meta?.total) ||
+    Number(json?.pagination?.total) ||
+    Number(json?.data?.total) ||
+    rowsLength
+  );
+}
+
 const STATUS_PILL_CLASS = {
   New: "bg-sky-50 text-sky-700",
   Contacted: "bg-violet-50 text-violet-700",
@@ -246,8 +297,15 @@ function formatRevenue(value) {
 
 export default function LeadTrackingPage() {
   const [leads, setLeads] = useState([]);
+  const [statsLeads, setStatsLeads] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [currentPage, setCurrentPage] = useState(DEFAULT_PAGE);
+  const [entriesPerPage, setEntriesPerPage] = useState(DEFAULT_LIMIT);
+  const [totalCount, setTotalCount] = useState(0);
+  const [canGoNext, setCanGoNext] = useState(false);
+  const [refreshSeed, setRefreshSeed] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
 
@@ -284,6 +342,9 @@ export default function LeadTrackingPage() {
     try {
       await deleteApi(`lead-tracking/${leadId}`);
       setLeads((prev) => prev.filter((l) => l.id !== leadId));
+      setStatsLeads((prev) => prev.filter((l) => l.id !== leadId));
+      setTotalCount((prev) => Math.max(0, prev - 1));
+      setRefreshSeed((s) => s + 1);
       setSavedMessage("Lead deleted successfully.");
       setTimeout(() => setSavedMessage(""), 3000);
     } catch (err) {
@@ -294,6 +355,32 @@ export default function LeadTrackingPage() {
     }
   };
 
+  const loadStatsLeads = useCallback(async (isMountedRef) => {
+    try {
+      setStatsLoading(true);
+      const json = await getApi("lead-tracking", { page: 1, limit: STATS_FETCH_LIMIT });
+      if (!json || json.status !== 1 || !Array.isArray(json.data)) {
+        throw new Error(json?.message || "Invalid leads response");
+      }
+      if (isMountedRef.current) {
+        setStatsLeads(json.data.map(mapApiLead));
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Error loading lead stats", err);
+    } finally {
+      if (isMountedRef.current) setStatsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const isMounted = { current: true };
+    loadStatsLeads(isMounted);
+    return () => {
+      isMounted.current = false;
+    };
+  }, [refreshSeed, loadStatsLeads]);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -302,50 +389,25 @@ export default function LeadTrackingPage() {
         setLoading(true);
         setError(null);
 
-        const json = await getApi("lead-tracking", { page: 1, limit: 100 });
+        const json = await getApi("lead-tracking", {
+          page: currentPage,
+          limit: entriesPerPage,
+        });
         if (!json || json.status !== 1 || !Array.isArray(json.data)) {
           throw new Error(json?.message || "Invalid leads response");
         }
 
-        const mapped = json.data.map((item) => {
-          const latestUpdate = getLatestUpdate(item.lead_updates);
-
-          // Raw `item` first so every API field is available for edit prefill; mapped keys win for table + form aliases.
-          return {
-            ...item,
-            id: item.id,
-            brand: item.brand,
-            activityName: item.activity,
-            leadOwner: item.full_name || item.username || "Unknown",
-            currentStatus: item.current_status || item.stage || "New",
-            nextstep: Number(item.nextstep ?? item.next_step ?? 1) || 1,
-            nextFollowUpDate:
-              (latestUpdate?.next_follow_up_date || item.next_follow_up_date || "")
-                ?.slice(0, 10) || "",
-            primaryChannel: latestUpdate?.channel || item.lead_source || "",
-            nextStep: latestUpdate?.next_action || item.next_step || "",
-            cityRegion: item.city_region || "",
-            leadSource: item.lead_source || "",
-            mode: item.mode || "",
-            activityType: item.activity_type || "",
-            priority: item.priority || "",
-            primaryContactName: item.primary_contact || "",
-            phone: item.phone || "",
-            email: item.email || "",
-            role: item.designation || "",
-            decisionMakerName: item.decision_maker || "",
-            objective: item.current_status_summary || latestUpdate?.discussion_summary || "",
-            activityDate: item.expected_activity_date?.slice?.(0, 10) || "",
-            dependencies: latestUpdate?.dependencies || item.dependencies || "",
-            expectedRevenueType: "value",
-            expectedRevenueValue: latestUpdate?.value_after ?? item.expected_revenue ?? "",
-            expectedRevenueRange: "",
-            expectedExpenses: latestUpdate?.expense_after ?? item.expected_expenses ?? "",
-          };
-        });
+        const mapped = json.data.map(mapApiLead);
+        const metaTotal = extractLeadsTotal(json, mapped.length);
 
         if (isMounted) {
           setLeads(mapped);
+          setTotalCount(metaTotal);
+          setCanGoNext(
+            metaTotal > 0
+              ? currentPage * entriesPerPage < metaTotal
+              : mapped.length === entriesPerPage
+          );
         }
       } catch (err) {
         // eslint-disable-next-line no-console
@@ -365,7 +427,7 @@ export default function LeadTrackingPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [currentPage, entriesPerPage, refreshSeed]);
 
   const handleChange = (field) => (e) => {
     const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
@@ -529,50 +591,86 @@ export default function LeadTrackingPage() {
     return map;
   }, [leads]);
 
-  const totalLeads = leads.length;
+  const statsRevenueByLeadId = useMemo(() => {
+    const map = new Map();
+    for (const l of statsLeads) {
+      map.set(l.id, parseRevenue(l));
+    }
+    return map;
+  }, [statsLeads]);
+
+  const totalLeads = totalCount || statsLeads.length;
 
   const totalPipeline = useMemo(() => {
     let sum = 0;
-    for (const v of revenueByLeadId.values()) sum += v;
+    for (const v of statsRevenueByLeadId.values()) sum += v;
     return sum;
-  }, [revenueByLeadId]);
+  }, [statsRevenueByLeadId]);
 
   const activeLeads = useMemo(
-    () => leads.filter((l) => l.currentStatus !== "Won" && l.currentStatus !== "Lost"),
-    [leads]
+    () =>
+      statsLeads.filter((l) => l.currentStatus !== "Won" && l.currentStatus !== "Lost"),
+    [statsLeads]
   );
 
   const next7Days = useMemo(() => {
-    if (!leads.length) return [];
+    if (!statsLeads.length) return [];
     const today = new Date();
-    return leads.filter((l) => {
+    return statsLeads.filter((l) => {
       if (!l.nextFollowUpDate) return false;
       const target = new Date(l.nextFollowUpDate);
       const diffDays = (target - today) / (1000 * 60 * 60 * 24);
       return diffDays >= 0 && diffDays <= 7;
     });
-  }, [leads]);
+  }, [statsLeads]);
 
   const statusCounts = useMemo(() => {
     const acc = Object.fromEntries(STATUS_OPTIONS.map((s) => [s, 0]));
-    for (const l of leads) {
+    for (const l of statsLeads) {
       const s = l.currentStatus;
       if (s && Object.prototype.hasOwnProperty.call(acc, s)) acc[s] += 1;
     }
     return acc;
-  }, [leads]);
+  }, [statsLeads]);
 
   const byOwnerChartData = useMemo(() => {
     const owners = new Map();
-    for (const l of leads) {
+    for (const l of statsLeads) {
       const key = l.leadOwner || "Unknown";
       const current = owners.get(key) || { owner: key, leads: 0, value: 0 };
       current.leads += 1;
-      current.value += revenueByLeadId.get(l.id) || 0;
+      current.value += statsRevenueByLeadId.get(l.id) || 0;
       owners.set(key, current);
     }
     return Array.from(owners.values());
-  }, [leads, revenueByLeadId]);
+  }, [statsLeads, statsRevenueByLeadId]);
+
+  const startIndex = leads.length === 0 ? 0 : (currentPage - 1) * entriesPerPage + 1;
+  const endIndex = (currentPage - 1) * entriesPerPage + leads.length;
+  const totalPages = totalCount > 0 ? Math.ceil(totalCount / entriesPerPage) : null;
+  const visiblePages = useMemo(() => {
+    const windowSize = 7;
+
+    if (totalPages) {
+      let start = Math.max(1, currentPage - Math.floor(windowSize / 2));
+      let end = Math.min(totalPages, start + windowSize - 1);
+      start = Math.max(1, end - windowSize + 1);
+      return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+    }
+
+    let start = Math.max(1, currentPage - 3);
+    let end = start + windowSize - 1;
+
+    if (!canGoNext) {
+      end = currentPage;
+      start = Math.max(1, end - windowSize + 1);
+    }
+
+    if (currentPage < start) start = currentPage;
+    if (currentPage > end) end = currentPage;
+
+    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  }, [totalPages, currentPage, canGoNext]);
 
   const statusChartData = useMemo(
     () => STATUS_OPTIONS.map((status) => ({ status, count: statusCounts[status] || 0 })),
@@ -616,7 +714,7 @@ export default function LeadTrackingPage() {
       </div>
 
       {/* Top: quick health cards */}
-      {loading ? (
+      {loading || statsLoading ? (
         <section className="grid gap-4 md:grid-cols-3">
           <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
           <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
@@ -659,7 +757,7 @@ export default function LeadTrackingPage() {
       )}
 
       {/* Comparison graphs */}
-      {loading ? (
+      {loading || statsLoading ? (
         <section className="grid gap-4 lg:grid-cols-2">
           <div className="h-80 animate-pulse rounded-2xl bg-slate-100" />
           <div className="h-80 animate-pulse rounded-2xl bg-slate-100" />
@@ -779,80 +877,87 @@ export default function LeadTrackingPage() {
       )}
 
       {/* Leads table */}
-      <section className="rounded-2xl bg-white shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 overflow-hidden">
-        <div className="border-b border-slate-200 bg-slate-50/70 px-4 py-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium text-slate-800">All leads</p>
-            {loading && (
-              <p className="text-xs text-slate-400">
-                Syncing from API…
-              </p>
-            )}
-            {error && !loading && (
-              <p className="text-xs text-rose-500">
-                {error}
-              </p>
-            )}
+      <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+        <div className="flex flex-wrap items-center gap-4 border-b border-slate-200 bg-slate-50/80 px-4 py-3">
+          <p className="text-sm font-medium text-slate-800">All leads</p>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-600">Show</span>
+            <select
+              value={entriesPerPage}
+              onChange={(e) => {
+                setEntriesPerPage(Number(e.target.value));
+                setCurrentPage(DEFAULT_PAGE);
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm"
+            >
+              {ENTRIES_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            <span className="text-sm text-slate-600">entries</span>
           </div>
+          {loading && <p className="ml-auto text-xs text-slate-400">Syncing from API…</p>}
+          {error && !loading && (
+            <p className="ml-auto text-xs text-rose-500">{error}</p>
+          )}
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-xs">
+          <table className="w-full min-w-[1100px] text-left">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                <th className="px-4 py-2.5">Lead ID</th>
-                <th className="px-4 py-2.5">Brand</th>
-                <th className="px-4 py-2.5">Activity</th>
-                <th className="px-4 py-2.5">Owner</th>
-                <th className="px-4 py-2.5">Status</th>
-                <th className="px-4 py-2.5">Next follow-up</th>
-                <th className="px-4 py-2.5">Channel</th>
-                <th className="px-4 py-2.5">Region</th>
-                <th className="px-4 py-2.5 text-right">Est. value</th>
-                <th className="px-4 py-2.5 text-right w-28">Actions</th>
+              <tr className="border-b border-indigo-200/60 bg-indigo-50/80">
+                <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Lead ID</th>
+                <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Brand</th>
+                <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Activity</th>
+                <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Owner</th>
+                <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Status</th>
+                <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Next follow-up</th>
+                <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Channel</th>
+                <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Region</th>
+                <th className="px-4 py-3.5 text-right text-sm font-semibold text-indigo-900">Est. value</th>
+                <th className="w-28 px-4 py-3.5 text-right text-sm font-semibold text-indigo-900">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                Array.from({ length: 5 }).map((_, idx) => (
-                  <tr key={idx} className="animate-pulse">
+                Array.from({ length: entriesPerPage > 10 ? 10 : entriesPerPage }).map((_, idx) => (
+                  <tr key={idx} className="animate-pulse border-b border-slate-100">
                     <td className="px-4 py-3">
-                      <div className="h-3.5 w-16 rounded bg-slate-100" />
+                      <div className="h-4 w-16 rounded bg-slate-100" />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="h-3.5 w-24 rounded bg-slate-100" />
+                      <div className="h-4 w-24 rounded bg-slate-100" />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="h-3.5 w-40 rounded bg-slate-100" />
+                      <div className="h-4 w-40 rounded bg-slate-100" />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="h-3.5 w-28 rounded bg-slate-100" />
+                      <div className="h-4 w-28 rounded bg-slate-100" />
                     </td>
                     <td className="px-4 py-3">
                       <div className="h-5 w-24 rounded-full bg-slate-100" />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="h-3.5 w-24 rounded bg-slate-100" />
+                      <div className="h-4 w-24 rounded bg-slate-100" />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="h-3.5 w-20 rounded bg-slate-100" />
+                      <div className="h-4 w-20 rounded bg-slate-100" />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="h-3.5 w-32 rounded bg-slate-100" />
+                      <div className="h-4 w-32 rounded bg-slate-100" />
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="ml-auto h-3.5 w-16 rounded bg-slate-100" />
+                      <div className="ml-auto h-4 w-16 rounded bg-slate-100" />
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="ml-auto h-7 w-14 rounded-lg bg-slate-100" />
+                      <div className="ml-auto h-8 w-14 rounded-lg bg-slate-100" />
                     </td>
                   </tr>
                 ))
               ) : leads.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={10}
-                    className="px-4 py-6 text-center text-xs text-slate-500"
-                  >
+                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-500">
                     No leads yet. Click &quot;Add lead&quot; to create your first one.
                   </td>
                 </tr>
@@ -873,36 +978,36 @@ export default function LeadTrackingPage() {
                           router.push(`/leads/${row.id}`);
                         }
                       }}
-                      className="hover:bg-slate-50/60 text-[13px] cursor-pointer"
+                      className="cursor-pointer border-b border-slate-100 text-sm transition-colors hover:bg-slate-50/50"
                     >
-                      <td className="px-4 py-2.5 text-slate-700 tabular-nums">
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-700 tabular-nums">
                         {row.lead_id != null && String(row.lead_id).trim() !== ""
                           ? row.lead_id
                           : "-"}
                       </td>
-                      <td className="px-4 py-2.5 text-slate-900">{row.brand}</td>
-                      <td className="px-4 py-2.5 text-slate-700">{row.activityName}</td>
-                      <td className="px-4 py-2.5 text-slate-700">{row.leadOwner}</td>
-                      <td className="px-4 py-3">
+                      <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-900">{row.brand}</td>
+                      <td className="px-4 py-3 text-slate-700">{row.activityName}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">{row.leadOwner}</td>
+                      <td className="whitespace-nowrap px-4 py-3">
                         <span
                           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${colorClasses}`}
                         >
                           {status}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 text-slate-700">
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">
                         {row.nextFollowUpDate || "—"}
                       </td>
-                      <td className="px-4 py-2.5 text-slate-700">
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">
                         {row.primaryChannel || "—"}
                       </td>
-                      <td className="px-4 py-2.5 text-slate-700">
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">
                         {row.cityRegion || "—"}
                       </td>
-                      <td className="px-4 py-2.5 text-right text-slate-800">
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-slate-800">
                         {formatRevenue(approxRevenue)}
                       </td>
-                      <td className="px-4 py-2.5 text-right">
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             type="button"
@@ -969,6 +1074,53 @@ export default function LeadTrackingPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-200 bg-slate-50/80 px-4 py-3">
+          <p className="text-sm text-slate-600">
+            {totalCount > 0 ? (
+              <>
+                Showing {startIndex} to {endIndex} of {totalCount} entries
+              </>
+            ) : (
+              <>
+                Showing {startIndex} to {endIndex}
+              </>
+            )}
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1 || loading}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            {visiblePages.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setCurrentPage(p)}
+                disabled={loading}
+                className={`min-w-9 rounded-lg border px-3 py-1.5 text-sm font-medium ${
+                  p === currentPage
+                    ? "border-indigo-600 bg-indigo-600 text-white"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => p + 1)}
+              disabled={!canGoNext || loading || (totalPages ? currentPage >= totalPages : false)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </section>
 

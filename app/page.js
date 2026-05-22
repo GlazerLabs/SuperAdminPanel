@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import TrafficChartContainer from "@/components/charts/TrafficChartContainer";
-import CountryInstallsBarChart from "@/components/charts/CountryInstallsBarChart";
-import TrafficSourcesPieChart from "@/components/charts/TrafficSourcesPieChart";
+// import CountryInstallsBarChart from "@/components/charts/CountryInstallsBarChart";
+// import TrafficSourcesPieChart from "@/components/charts/TrafficSourcesPieChart";
 import PlaystoreInstallsChart from "@/components/charts/PlaystoreInstallsChart";
 import { fetchDashboardUserCounts } from "@/api";
 
@@ -475,7 +475,7 @@ export default function Home() {
       </section>
 
       {/* Charts — more space, clear sections */}
-      <section className="chart-fade-in grid gap-6 lg:grid-cols-[1.6fr,1fr]">
+      <section className="chart-fade-in grid gap-6">
         <div className="rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-xl font-semibold text-slate-900">
@@ -487,7 +487,7 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-6">
+        {/* <div className="flex flex-col gap-6">
           <div className="rounded-2xl bg-white p-6 shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80">
             <h2 className="text-xl font-semibold text-slate-900">
               Installs by country
@@ -525,7 +525,7 @@ export default function Home() {
               </ul>
             </div>
           </div>
-        </div>
+        </div> */}
       </section>
 
       {/* Play Store chart from BigQuery */}
