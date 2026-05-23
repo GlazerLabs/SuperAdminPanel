@@ -188,6 +188,14 @@ const SAMPLE_LEADS = [
   },
 ];
 
+function formatContactName(value) {
+  if (Array.isArray(value)) {
+    const first = value.find((v) => String(v || "").trim());
+    return first ? String(first).trim() : "";
+  }
+  return value ? String(value).trim() : "";
+}
+
 function parseRevenue(lead) {
   if (lead.expectedRevenueType === "value" && lead.expectedRevenueValue) {
     const n = Number(String(lead.expectedRevenueValue).replace(/[^0-9.]/g, ""));
@@ -234,10 +242,11 @@ function mapApiLead(item) {
     mode: item.mode || "",
     activityType: item.activity_type || "",
     priority: item.priority || "",
-    primaryContactName: item.primary_contact || "",
+    primaryContactName: formatContactName(item.primary_contact),
     phone: item.phone || "",
     email: item.email || "",
     role: item.designation || "",
+    agencyInvolved: item.agency_involved || "",
     decisionMakerName: item.decision_maker || "",
     objective: item.current_status_summary || latestUpdate?.discussion_summary || "",
     activityDate: item.expected_activity_date?.slice?.(0, 10) || "",
@@ -603,9 +612,12 @@ export default function LeadTrackingPage() {
 
   const totalPipeline = useMemo(() => {
     let sum = 0;
-    for (const v of statsRevenueByLeadId.values()) sum += v;
+    for (const l of statsLeads) {
+      if (l.currentStatus === "Lost") continue;
+      sum += statsRevenueByLeadId.get(l.id) || 0;
+    }
     return sum;
-  }, [statsRevenueByLeadId]);
+  }, [statsLeads, statsRevenueByLeadId]);
 
   const activeLeads = useMemo(
     () =>
@@ -639,7 +651,9 @@ export default function LeadTrackingPage() {
       const key = l.leadOwner || "Unknown";
       const current = owners.get(key) || { owner: key, leads: 0, value: 0 };
       current.leads += 1;
-      current.value += statsRevenueByLeadId.get(l.id) || 0;
+      if (l.currentStatus !== "Lost") {
+        current.value += statsRevenueByLeadId.get(l.id) || 0;
+      }
       owners.set(key, current);
     }
     return Array.from(owners.values());
@@ -913,10 +927,10 @@ export default function LeadTrackingPage() {
                 <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Owner</th>
                 <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Status</th>
                 <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Next follow-up</th>
-                <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Channel</th>
-                <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Region</th>
+                <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Lead Source</th>
+                {/* <th className="px-4 py-3.5 text-sm font-semibold text-indigo-900">Region</th> */}
                 <th className="px-4 py-3.5 text-right text-sm font-semibold text-indigo-900">Est. value</th>
-                <th className="w-28 px-4 py-3.5 text-right text-sm font-semibold text-indigo-900">Actions</th>
+                {/* <th className="w-28 px-4 py-3.5 text-right text-sm font-semibold text-indigo-900">Actions</th> */}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -944,20 +958,20 @@ export default function LeadTrackingPage() {
                     <td className="px-4 py-3">
                       <div className="h-4 w-20 rounded bg-slate-100" />
                     </td>
-                    <td className="px-4 py-3">
+                    {/* <td className="px-4 py-3">
                       <div className="h-4 w-32 rounded bg-slate-100" />
-                    </td>
+                    </td> */}
                     <td className="px-4 py-3 text-right">
                       <div className="ml-auto h-4 w-16 rounded bg-slate-100" />
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    {/* <td className="px-4 py-3 text-right">
                       <div className="ml-auto h-8 w-14 rounded-lg bg-slate-100" />
-                    </td>
+                    </td> */}
                   </tr>
                 ))
               ) : leads.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-500">
+                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-500">
                     No leads yet. Click &quot;Add lead&quot; to create your first one.
                   </td>
                 </tr>
@@ -999,15 +1013,15 @@ export default function LeadTrackingPage() {
                         {row.nextFollowUpDate || "—"}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-700">
-                        {row.primaryChannel || "—"}
+                        {row.leadSource || "—"}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">
+                      {/* <td className="whitespace-nowrap px-4 py-3 text-slate-700">
                         {row.cityRegion || "—"}
-                      </td>
+                      </td> */}
                       <td className="whitespace-nowrap px-4 py-3 text-right text-slate-800">
                         {formatRevenue(approxRevenue)}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                      {/* <td className="whitespace-nowrap px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             type="button"
@@ -1067,7 +1081,7 @@ export default function LeadTrackingPage() {
                             )}
                           </button>
                         </div>
-                      </td>
+                      </td> */}
                     </tr>
                   );
                 })
