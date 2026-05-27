@@ -84,6 +84,11 @@ function normalizePaymentTermsForForm(row) {
   return { paymentTerms: "Custom", paymentTermsCustom: raw };
 }
 
+function resolveContactType(item) {
+  const raw = pickText(item?.contactType, item?.contact_type) || "POC";
+  return raw === "Agency" ? "Agency" : "POC";
+}
+
 function normalizeContacts(row) {
   const raw = row.contacts ?? row.contacts_stakeholders ?? row.stakeholders;
   const fromArray = Array.isArray(raw)
@@ -93,6 +98,7 @@ function normalizeContacts(row) {
           phone: pickText(item?.phone),
           email: pickText(item?.email),
           role: pickText(item?.role, item?.designation),
+          contactType: resolveContactType(item),
         }))
         .filter((c) => c.name || c.phone || c.email || c.role)
     : [];
@@ -110,6 +116,7 @@ function normalizeContacts(row) {
       phone: pickText(phones[index]),
       email: pickText(emails[index]),
       role: pickText(roles[index]),
+      contactType: "POC",
     })).filter((c) => c.name || c.phone || c.email || c.role);
     if (fromParallelArrays.length) return fromParallelArrays;
   }
@@ -119,9 +126,10 @@ function normalizeContacts(row) {
     phone: pickText(row.phone),
     email: pickText(row.email),
     role: pickText(row.role, row.designation),
+    contactType: "POC",
   };
   if (fallback.name || fallback.phone || fallback.email || fallback.role) return [fallback];
-  return [{ name: "", phone: "", email: "", role: "" }];
+  return [{ name: "", phone: "", email: "", role: "", contactType: "POC" }];
 }
 
 /**

@@ -13,6 +13,8 @@ const STATUS_OPTIONS = [
   "Qualification",
   "Proposal Shared",
   "Negotiation",
+  "Hold",
+  "Meeting Schedule",
   "Won",
   "Lost",
 ];
@@ -101,7 +103,7 @@ const INITIAL_LEAD = {
   phone: "",
   email: "",
   role: "",
-  contacts: [{ name: "", phone: "", email: "", role: "" }],
+  contacts: [{ name: "", phone: "", email: "", role: "", contactType: "POC" }],
   decisionMakerKnown: "No",
   decisionMakerName: "",
   decisionMakerRole: "",
@@ -142,6 +144,28 @@ const INITIAL_LEAD = {
   proposalDueDate: "",
 };
 
+const CONTACT_TYPE_POC = "POC";
+const CONTACT_TYPE_AGENCY = "Agency";
+
+function emptyContact(contactType = CONTACT_TYPE_POC) {
+  return { name: "", phone: "", email: "", role: "", agencyName: "", contactType };
+}
+
+function resolveContactType(item) {
+  const raw = String(item?.contactType || item?.contact_type || CONTACT_TYPE_POC).trim();
+  return raw === CONTACT_TYPE_AGENCY ? CONTACT_TYPE_AGENCY : CONTACT_TYPE_POC;
+}
+
+function isContactFilled(contact) {
+  return Boolean(contact?.name || contact?.phone || contact?.email || contact?.role || contact?.agencyName);
+}
+
+function contactsWithIndex(contacts, contactType) {
+  return (contacts || [])
+    .map((contact, index) => ({ contact, index }))
+    .filter(({ contact }) => resolveContactType(contact) === contactType);
+}
+
 function normalizeContacts(contacts, fallback = {}) {
   const list = Array.isArray(contacts) ? contacts : [];
   const normalized = list
@@ -150,6 +174,8 @@ function normalizeContacts(contacts, fallback = {}) {
       phone: String(item?.phone || "").trim(),
       email: String(item?.email || "").trim(),
       role: String(item?.role || item?.designation || "").trim(),
+      agencyName: String(item?.agencyName || item?.agency_name || fallback.agencyInvolved || "").trim(),
+      contactType: resolveContactType(item),
     }))
     .filter((item) => item.name || item.phone || item.email || item.role);
 
@@ -160,18 +186,21 @@ function normalizeContacts(contacts, fallback = {}) {
     phone: String(fallback.phone || "").trim(),
     email: String(fallback.email || "").trim(),
     role: String(fallback.role || "").trim(),
+    contactType: CONTACT_TYPE_POC,
   };
   if (fallbackContact.name || fallbackContact.phone || fallbackContact.email || fallbackContact.role) {
     return [fallbackContact];
   }
 
-  return [{ name: "", phone: "", email: "", role: "" }];
+  return [emptyContact(CONTACT_TYPE_POC)];
 }
 
 function withNormalizedContacts(draft) {
   const merged = { ...INITIAL_LEAD, ...(draft || {}) };
   const contacts = normalizeContacts(merged.contacts, merged);
-  const primary = contacts[0] || { name: "", phone: "", email: "", role: "" };
+  const primary =
+    contacts.find((c) => resolveContactType(c) === CONTACT_TYPE_POC) ||
+    emptyContact(CONTACT_TYPE_POC);
 
   return {
     ...merged,
@@ -505,7 +534,9 @@ export default function NewLeadPage() {
     setLead((prev) => {
       const nextContacts = [...(prev.contacts || [])];
       nextContacts[index] = { ...(nextContacts[index] || {}), [field]: value };
-      const primary = nextContacts[0] || { name: "", phone: "", email: "", role: "" };
+      const primary =
+        nextContacts.find((c) => resolveContactType(c) === CONTACT_TYPE_POC) ||
+        emptyContact(CONTACT_TYPE_POC);
       return {
         ...prev,
         contacts: nextContacts,
@@ -522,22 +553,30 @@ export default function NewLeadPage() {
       [`contacts_${index}_phone`]: undefined,
       [`contacts_${index}_email`]: undefined,
       [`contacts_${index}_role`]: undefined,
+      [`contacts_${index}_agencyName`]: undefined,
     }));
   };
 
-  const handleAddContact = () => {
+  const handleAddContact = (contactType = CONTACT_TYPE_POC) => {
     setLead((prev) => ({
       ...prev,
-      contacts: [...(prev.contacts || []), { name: "", phone: "", email: "", role: "" }],
+      contacts: [...(prev.contacts || []), emptyContact(contactType)],
     }));
   };
 
   const handleRemoveContact = (index) => {
     setLead((prev) => {
       const current = prev.contacts || [];
+      const removed = current[index];
       const nextContacts = current.filter((_, i) => i !== index);
-      const safeContacts = nextContacts.length ? nextContacts : [{ name: "", phone: "", email: "", role: "" }];
-      const primary = safeContacts[0] || { name: "", phone: "", email: "", role: "" };
+      const removedType = resolveContactType(removed);
+      const hasTypeLeft = nextContacts.some((c) => resolveContactType(c) === removedType);
+      const safeContacts = hasTypeLeft
+        ? nextContacts
+        : [...nextContacts, emptyContact(removedType)];
+      const primary =
+        safeContacts.find((c) => resolveContactType(c) === CONTACT_TYPE_POC) ||
+        emptyContact(CONTACT_TYPE_POC);
       return {
         ...prev,
         contacts: safeContacts,
@@ -558,28 +597,35 @@ export default function NewLeadPage() {
       if (!lead.leadOwner.trim()) nextErrors.leadOwner = "Lead owner is required.";
       if (!lead.currentStatus) nextErrors.currentStatus = "Status is required.";
       if (!lead.nextStep.trim()) nextErrors.nextStep = "Next step is required.";
-      if (!lead.primaryChannel) nextErrors.primaryChannel = "Channel is required.";
     } else if (currentStep === 2) {
-      const filledContacts = (lead.contacts || [])
-        .map((contact, index) => ({ contact, index }))
-        .filter(({ contact }) => contact?.name || contact?.phone || contact?.email || contact?.role);
+      const validateFilledContacts = (entries) => {
+        entries.forEach(({ contact, index }) => {
+          const contactType = resolveContactType(contact);
+          if (!contact?.name?.trim()) {
+            nextErrors[`contacts_${index}_name`] = "Contact name is required.";
+          }
+          if (contactType === CONTACT_TYPE_POC && !contact?.role?.trim()) {
+            nextErrors[`contacts_${index}_role`] = "Role / designation is required.";
+          }
+          if (contactType === CONTACT_TYPE_AGENCY && !contact?.agencyName?.trim()) {
+            nextErrors[`contacts_${index}_agencyName`] = "Agency name is required.";
+          }
+        });
+      };
 
-      if (!filledContacts.length) {
-        nextErrors.contacts = "Add at least one contact/stakeholder.";
+      const pocEntries = contactsWithIndex(lead.contacts, CONTACT_TYPE_POC).filter(({ contact }) =>
+        isContactFilled(contact)
+      );
+      const agencyEntries = contactsWithIndex(lead.contacts, CONTACT_TYPE_AGENCY).filter(({ contact }) =>
+        isContactFilled(contact)
+      );
+
+      if (!pocEntries.length && !agencyEntries.length) {
+        nextErrors.contacts = "Add at least one POC or agency contact.";
       }
 
-      filledContacts.forEach(({ contact, index }) => {
-        if (!contact?.name?.trim()) {
-          nextErrors[`contacts_${index}_name`] = "Contact name is required.";
-        }
-        if (!contact?.role?.trim()) {
-          nextErrors[`contacts_${index}_role`] = "Role / designation is required.";
-        }
-        if (!contact?.phone?.trim() && !contact?.email?.trim()) {
-          nextErrors[`contacts_${index}_phone`] = "Phone or email is required.";
-          nextErrors[`contacts_${index}_email`] = "Phone or email is required.";
-        }
-      });
+      validateFilledContacts(pocEntries);
+      validateFilledContacts(agencyEntries);
     } else if (currentStep === 3) {
       if (!lead.objective.trim()) nextErrors.objective = "Objective is required.";
       if (!lead.deliverableTypes.length) {
@@ -624,8 +670,6 @@ export default function NewLeadPage() {
       if (lead.expectedRevenueType === "range" && !lead.expectedRevenueRange.trim()) {
         nextErrors.expectedRevenueRange = "Expected range is required.";
       }
-      if (!lead.expenseModel) nextErrors.expenseModel = "Expense model is required.";
-      if (!lead.paymentTerms) nextErrors.paymentTerms = "Payment terms are required.";
       if (
         String(lead.paymentTerms || "").trim().toLowerCase() === "custom" &&
         !String(lead.paymentTermsCustom || "").trim()
@@ -661,22 +705,32 @@ export default function NewLeadPage() {
     return payload;
   };
 
-  const buildStepTwoUpdatePayload = () => ({
-    primary_contact: (lead.contacts || [])
-      .filter((contact) => contact?.name || contact?.phone || contact?.email || contact?.role)
-      .map((contact) => contact.name || ""),
-    designation: (lead.contacts || [])
-      .filter((contact) => contact?.name || contact?.phone || contact?.email || contact?.role)
-      .map((contact) => contact.role || ""),
-    phone: (lead.contacts || [])
-      .filter((contact) => contact?.name || contact?.phone || contact?.email || contact?.role)
-      .map((contact) => contact.phone || ""),
-    email: (lead.contacts || [])
-      .filter((contact) => contact?.name || contact?.phone || contact?.email || contact?.role)
-      .map((contact) => contact.email || ""),
-    decision_maker: lead.decisionMakerName || "",
-    nextstep: 2,
-  });
+  const buildStepTwoUpdatePayload = () => {
+    const pocContacts = (lead.contacts || []).filter(
+      (contact) => resolveContactType(contact) === CONTACT_TYPE_POC && isContactFilled(contact)
+    );
+    const agencyContacts = (lead.contacts || []).filter(
+      (contact) => resolveContactType(contact) === CONTACT_TYPE_AGENCY && isContactFilled(contact)
+    );
+
+    const payload = {
+      primary_contact: pocContacts.map((contact) => contact.name || ""),
+      designation: pocContacts.map((contact) => contact.role || ""),
+      phone: pocContacts.map((contact) => contact.phone || ""),
+      email: pocContacts.map((contact) => contact.email || ""),
+      decision_maker: lead.decisionMakerName || "",
+      nextstep: 2,
+    };
+
+    if (agencyContacts.length) {
+      payload.agency_name = agencyContacts.map((contact) => contact.agencyName || "");
+      payload.agency_poc_name = agencyContacts.map((contact) => contact.name || "");
+      payload.agency_poc_email = agencyContacts.map((contact) => contact.email || "");
+      payload.agency_poc_phone = agencyContacts.map((contact) => contact.phone || "");
+    }
+
+    return payload;
+  };
 
   const buildStepThreeUpdatePayload = () => {
     const payload = {
@@ -1565,7 +1619,7 @@ export default function NewLeadPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700">
-                    Primary channel <span className="text-rose-500">*</span>
+                    Primary channel
                   </label>
                   <select
                     value={lead.primaryChannel}
@@ -1664,100 +1718,204 @@ export default function NewLeadPage() {
 
           {currentStep === 2 && (
             <section>
-              <div className="mb-3">
+              <div className="mb-4">
                 <h2 className="text-sm font-semibold text-slate-900">
                   Step 2 · Contacts &amp; stakeholders
                 </h2>
                 <p className="mt-1 text-xs text-slate-500">
-                  Capture the people who will make this deal move.
+                  Capture brand POCs and agency contacts for this deal.
                 </p>
               </div>
-              <div className="space-y-4">
-                {(lead.contacts || []).map((contact, index) => (
-                  <div key={`contact-${index}`} className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-                    <div className="mb-3 flex items-center justify-between gap-2">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                        {index === 0 ? "Primary contact" : `Stakeholder ${index}`}
-                      </p>
-                      {(lead.contacts || []).length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveContact(index)}
-                          className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700">
-                          Contact name <span className="text-rose-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={contact.name || ""}
-                          onChange={handleContactChange(index, "name")}
-                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          placeholder="Main point of contact"
-                        />
-                        {errors[`contacts_${index}_name`] && (
-                          <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_name`]}</p>
-                        )}
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700">Phone</label>
-                        <input
-                          type="tel"
-                          value={contact.phone || ""}
-                          onChange={handleContactChange(index, "phone")}
-                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          placeholder="+91..."
-                        />
-                        {errors[`contacts_${index}_phone`] && (
-                          <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_phone`]}</p>
-                        )}
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700">Email</label>
-                        <input
-                          type="email"
-                          value={contact.email || ""}
-                          onChange={handleContactChange(index, "email")}
-                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          placeholder="name@brand.com"
-                        />
-                        {errors[`contacts_${index}_email`] && (
-                          <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_email`]}</p>
-                        )}
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700">
-                          Role / designation <span className="text-rose-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={contact.role || ""}
-                          onChange={handleContactChange(index, "role")}
-                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          placeholder="Brand manager, marketing head..."
-                        />
-                        {errors[`contacts_${index}_role`] && (
-                          <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_role`]}</p>
-                        )}
-                      </div>
-                    </div>
+
+              <div className="space-y-6">
+                <div>
+                  <div className="mb-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-indigo-700">POC</h3>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Brand-side point of contact — saved as primary contact on the lead.
+                    </p>
                   </div>
-                ))}
-                {errors.contacts && <p className="text-xs text-rose-600">{errors.contacts}</p>}
-                <button
-                  type="button"
-                  onClick={handleAddContact}
-                  className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
-                >
-                  <span className="text-sm leading-none">+</span>
-                  Add contact / stakeholder
-                </button>
+                  <div className="space-y-4">
+                    {contactsWithIndex(lead.contacts, CONTACT_TYPE_POC).map(({ contact, index }, pocIndex) => (
+                      <div key={`poc-${index}`} className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            {pocIndex === 0 ? "Primary POC" : `POC ${pocIndex + 1}`}
+                          </p>
+                          {contactsWithIndex(lead.contacts, CONTACT_TYPE_POC).length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveContact(index)}
+                              className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700">
+                              Contact name <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={contact.name || ""}
+                              onChange={handleContactChange(index, "name")}
+                              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              placeholder="Main point of contact"
+                            />
+                            {errors[`contacts_${index}_name`] && (
+                              <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_name`]}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700">Phone</label>
+                            <input
+                              type="tel"
+                              value={contact.phone || ""}
+                              onChange={handleContactChange(index, "phone")}
+                              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              placeholder="+91..."
+                            />
+                            {errors[`contacts_${index}_phone`] && (
+                              <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_phone`]}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700">Email</label>
+                            <input
+                              type="email"
+                              value={contact.email || ""}
+                              onChange={handleContactChange(index, "email")}
+                              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              placeholder="name@brand.com"
+                            />
+                            {errors[`contacts_${index}_email`] && (
+                              <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_email`]}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700">
+                              Role / designation <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={contact.role || ""}
+                              onChange={handleContactChange(index, "role")}
+                              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              placeholder="Brand manager, marketing head..."
+                            />
+                            {errors[`contacts_${index}_role`] && (
+                              <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_role`]}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {errors.contacts && <p className="text-xs text-rose-600">{errors.contacts}</p>}
+                    <button
+                      type="button"
+                      onClick={() => handleAddContact(CONTACT_TYPE_POC)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                    >
+                      <span className="text-sm leading-none">+</span>
+                      Add POC
+                    </button>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-200 pt-6">
+                  <div className="mb-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-violet-700">Agency</h3>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Optional — if this deal runs through an agency partner.
+                    </p>
+                  </div>
+                  <div className="space-y-4">
+                    {contactsWithIndex(lead.contacts, CONTACT_TYPE_AGENCY).map(({ contact, index }, agencyIndex) => (
+                      <div key={`agency-${index}`} className="rounded-xl border border-violet-100 bg-violet-50/30 p-4">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            Agency contact {agencyIndex + 1}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveContact(index)}
+                            className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700">
+                              Agency name <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={contact.agencyName || ""}
+                              onChange={handleContactChange(index, "agencyName")}
+                              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              placeholder="e.g. GroupM, Ogilvy"
+                            />
+                            {errors[`contacts_${index}_agencyName`] && (
+                              <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_agencyName`]}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700">
+                              Contact name <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={contact.name || ""}
+                              onChange={handleContactChange(index, "name")}
+                              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              placeholder="Agency account manager"
+                            />
+                            {errors[`contacts_${index}_name`] && (
+                              <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_name`]}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700">Phone</label>
+                            <input
+                              type="tel"
+                              value={contact.phone || ""}
+                              onChange={handleContactChange(index, "phone")}
+                              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              placeholder="+91..."
+                            />
+                            {errors[`contacts_${index}_phone`] && (
+                              <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_phone`]}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700">Email</label>
+                            <input
+                              type="email"
+                              value={contact.email || ""}
+                              onChange={handleContactChange(index, "email")}
+                              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              placeholder="name@agency.com"
+                            />
+                            {errors[`contacts_${index}_email`] && (
+                              <p className="mt-1 text-xs text-rose-600">{errors[`contacts_${index}_email`]}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => handleAddContact(CONTACT_TYPE_AGENCY)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100"
+                    >
+                      <span className="text-sm leading-none">+</span>
+                      Add agency contact
+                    </button>
+                  </div>
+                </div>
               </div>
             </section>
           )}
@@ -2086,7 +2244,7 @@ export default function NewLeadPage() {
                 <div className="grid gap-4 md:grid-cols-3">
                   <div>
                     <label className="block text-sm font-medium text-slate-700">
-                      Expense model <span className="text-rose-500">*</span>
+                      Expense model
                     </label>
                     <select
                       value={lead.expenseModel}
@@ -2108,7 +2266,7 @@ export default function NewLeadPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700">
-                      Payment terms <span className="text-rose-500">*</span>
+                      Payment terms
                     </label>
                     <select
                       value={lead.paymentTerms}

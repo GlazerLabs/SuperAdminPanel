@@ -13,6 +13,8 @@ const STATUS_OPTIONS = [
   "Qualification",
   "Proposal Shared",
   "Negotiation",
+  "Hold",
+  "Meeting Schedule",
   "Won",
   "Lost",
 ];
@@ -39,6 +41,8 @@ const STATUS_PILL_CLASS = {
   Qualification: "bg-amber-50 text-amber-900 ring-amber-100",
   "Proposal Shared": "bg-indigo-50 text-indigo-800 ring-indigo-100",
   Negotiation: "bg-emerald-50 text-emerald-900 ring-emerald-100",
+  Hold: "bg-orange-50 text-orange-800 ring-orange-100",
+  "Meeting Schedule": "bg-cyan-50 text-cyan-800 ring-cyan-100",
   Won: "bg-green-50 text-green-800 ring-green-100",
   Lost: "bg-rose-50 text-rose-800 ring-rose-100",
 };

@@ -17,6 +17,8 @@ const STATUS_OPTIONS = [
   "Qualification",
   "Proposal Shared",
   "Negotiation",
+  "Hold",
+  "Meeting Schedule",
   "Won",
   "Lost",
 ];
@@ -275,6 +277,8 @@ const STATUS_PILL_CLASS = {
   Qualification: "bg-amber-50 text-amber-700",
   "Proposal Shared": "bg-indigo-50 text-indigo-700",
   Negotiation: "bg-emerald-50 text-emerald-700",
+  Hold: "bg-orange-50 text-orange-700",
+  "Meeting Schedule": "bg-cyan-50 text-cyan-700",
   Won: "bg-green-50 text-green-700",
   Lost: "bg-rose-50 text-rose-700",
 };
@@ -304,9 +308,48 @@ function formatRevenue(value) {
   return `₹${formatCompactIndian(value)}`;
 }
 
+function toAgencyPocChartData(payload) {
+  const agencies = Array.isArray(payload?.agency) ? payload.agency : [];
+  const pocs = Array.isArray(payload?.normal_poc) ? payload.normal_poc : [];
+
+  const agencyRows = agencies.map((row, index) => {
+    const totalLeads = Number(row?.total_leads ?? 0);
+    const totalRevenue = Number(row?.total_revenue ?? 0);
+    const name = String(row?.name || "").trim() || `Agency ${index + 1}`;
+    return {
+      id: `agency-${index}-${name}`,
+      label: `${name} (Agency)`,
+      name,
+      kind: "Agency",
+      total: Number.isFinite(totalLeads) ? totalLeads : 0,
+      revenue: Number.isFinite(totalRevenue) ? totalRevenue : 0,
+    };
+  });
+
+  const pocRows = pocs.map((row, index) => {
+    const totalLeads = Number(row?.total_leads ?? 0);
+    const totalRevenue = Number(row?.total_revenue ?? 0);
+    const name = String(row?.name || "").trim() || `POC ${index + 1}`;
+    return {
+      id: `poc-${index}-${name}`,
+      label: `${name} (POC)`,
+      name,
+      kind: "POC",
+      total: Number.isFinite(totalLeads) ? totalLeads : 0,
+      revenue: Number.isFinite(totalRevenue) ? totalRevenue : 0,
+    };
+  });
+
+  return [...agencyRows, ...pocRows].filter((row) => row.total > 0);
+}
+
 export default function LeadTrackingPage() {
   const [leads, setLeads] = useState([]);
   const [statsLeads, setStatsLeads] = useState([]);
+  const [statusCountsFromApi, setStatusCountsFromApi] = useState(null);
+  const [agencyPocChartData, setAgencyPocChartData] = useState([]);
+  const [totalLeadsFromApi, setTotalLeadsFromApi] = useState(null);
+  const [totalRevenueFromApi, setTotalRevenueFromApi] = useState(null);
   const [loading, setLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -317,8 +360,12 @@ export default function LeadTrackingPage() {
   const [refreshSeed, setRefreshSeed] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+  const [searchLead, setSearchLead] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState("");
+  const [followUpWindowActive, setFollowUpWindowActive] = useState(false);
 
   const router = useRouter();
+  const [tableSectionEl, setTableSectionEl] = useState(null);
   const [lead, setLead] = useState(INITIAL_LEAD);
 
   const [updates, setUpdates] = useState([]);
@@ -371,8 +418,25 @@ export default function LeadTrackingPage() {
       if (!json || json.status !== 1 || !Array.isArray(json.data)) {
         throw new Error(json?.message || "Invalid leads response");
       }
+      let agencyTotalJson = null;
+      try {
+        agencyTotalJson = await getApi("lead-tracking/agency-total");
+      } catch (agencyErr) {
+        // eslint-disable-next-line no-console
+        console.error("Error loading agency totals", agencyErr);
+      }
       if (isMountedRef.current) {
         setStatsLeads(json.data.map(mapApiLead));
+        setStatusCountsFromApi(
+          json.current_status_counts && typeof json.current_status_counts === "object"
+            ? json.current_status_counts
+            : null
+        );
+        setTotalLeadsFromApi(Number.isFinite(Number(json.total)) ? Number(json.total) : null);
+        setTotalRevenueFromApi(
+          Number.isFinite(Number(json.total_revenue)) ? Number(json.total_revenue) : null
+        );
+        setAgencyPocChartData(toAgencyPocChartData(agencyTotalJson));
       }
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -398,9 +462,22 @@ export default function LeadTrackingPage() {
         setLoading(true);
         setError(null);
 
+        const today = new Date();
+        const end = new Date(today);
+        end.setDate(end.getDate() + 7);
+        const formatDate = (d) => d.toISOString().slice(0, 10);
+
         const json = await getApi("lead-tracking", {
           page: currentPage,
           limit: entriesPerPage,
+          ...(searchLead.trim() ? { search: searchLead.trim() } : {}),
+          ...(priorityFilter ? { priority: priorityFilter } : {}),
+          ...(followUpWindowActive
+            ? {
+                start_date: formatDate(today),
+                end_date: formatDate(end),
+              }
+            : {}),
         });
         if (!json || json.status !== 1 || !Array.isArray(json.data)) {
           throw new Error(json?.message || "Invalid leads response");
@@ -436,7 +513,17 @@ export default function LeadTrackingPage() {
     return () => {
       isMounted = false;
     };
-  }, [currentPage, entriesPerPage, refreshSeed]);
+  }, [currentPage, entriesPerPage, refreshSeed, searchLead, priorityFilter, followUpWindowActive]);
+
+  useEffect(() => {
+    setCurrentPage(DEFAULT_PAGE);
+  }, [searchLead, priorityFilter, followUpWindowActive]);
+
+  const handleFollowUpsCardClick = () => {
+    setFollowUpWindowActive(true);
+    setCurrentPage(DEFAULT_PAGE);
+    tableSectionEl?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const handleChange = (field) => (e) => {
     const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
@@ -471,7 +558,6 @@ export default function LeadTrackingPage() {
     if (!lead.currentStatus) nextErrors.currentStatus = "Current status is required.";
     if (!lead.nextFollowUpDate) nextErrors.nextFollowUpDate = "Next follow-up date is required.";
     if (!lead.nextStep.trim()) nextErrors.nextStep = "Next step is required.";
-    if (!lead.primaryChannel) nextErrors.primaryChannel = "Primary channel is required.";
 
     if (!lead.primaryContactName.trim()) nextErrors.primaryContactName = "Primary contact name is required.";
     if (!lead.phone.trim() && !lead.email.trim()) {
@@ -494,8 +580,6 @@ export default function LeadTrackingPage() {
     if (lead.expectedRevenueType === "range" && !lead.expectedRevenueRange.trim()) {
       nextErrors.expectedRevenueRange = "Expected revenue range is required.";
     }
-    if (!lead.expenseModel) nextErrors.expenseModel = "Expense model is required.";
-    if (!lead.paymentTerms) nextErrors.paymentTerms = "Payment terms are required.";
     if (!lead.gstApplicable) nextErrors.gstApplicable = "GST applicability is required.";
 
     setErrors(nextErrors);
@@ -608,16 +692,49 @@ export default function LeadTrackingPage() {
     return map;
   }, [statsLeads]);
 
-  const totalLeads = totalCount || statsLeads.length;
+  // CSV export for the current table view.
+  // Uses the exact numeric "Est. value" (no ₹, no Cr/Lakh compact formatting).
+  const downloadLeadsCsv = () => {
+    if (!Array.isArray(leads) || leads.length === 0) return;
+
+    const csvEscape = (val) => {
+      const s = val === undefined || val === null ? "" : String(val);
+      // Escape CSV values that contain commas, quotes, or new lines.
+      if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+
+    const header = ["Lead name", "Est. value"];
+    const rows = leads.map((row) => {
+      const leadName = row.brand || row.activityName || `Lead-${row.id}`;
+      const estValue = revenueByLeadId.get(row.id) ?? 0; // raw rupee number
+      return [leadName, estValue];
+    });
+
+    const csv = [header, ...rows].map((r) => r.map(csvEscape).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `leads-est-value-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const totalLeads = totalLeadsFromApi ?? totalCount ?? statsLeads.length;
 
   const totalPipeline = useMemo(() => {
+    if (totalRevenueFromApi !== null) return totalRevenueFromApi;
     let sum = 0;
     for (const l of statsLeads) {
       if (l.currentStatus === "Lost") continue;
       sum += statsRevenueByLeadId.get(l.id) || 0;
     }
     return sum;
-  }, [statsLeads, statsRevenueByLeadId]);
+  }, [totalRevenueFromApi, statsLeads, statsRevenueByLeadId]);
 
   const activeLeads = useMemo(
     () =>
@@ -636,7 +753,7 @@ export default function LeadTrackingPage() {
     });
   }, [statsLeads]);
 
-  const statusCounts = useMemo(() => {
+  const statusCountsFallback = useMemo(() => {
     const acc = Object.fromEntries(STATUS_OPTIONS.map((s) => [s, 0]));
     for (const l of statsLeads) {
       const s = l.currentStatus;
@@ -645,19 +762,18 @@ export default function LeadTrackingPage() {
     return acc;
   }, [statsLeads]);
 
-  const byOwnerChartData = useMemo(() => {
+  const agencyPocChartDataFallback = useMemo(() => {
     const owners = new Map();
     for (const l of statsLeads) {
       const key = l.leadOwner || "Unknown";
-      const current = owners.get(key) || { owner: key, leads: 0, value: 0 };
-      current.leads += 1;
-      if (l.currentStatus !== "Lost") {
-        current.value += statsRevenueByLeadId.get(l.id) || 0;
-      }
+      const current = owners.get(key) || { id: key, label: `${key} (POC)`, name: key, kind: "POC", total: 0, revenue: 0 };
+      current.total += 1;
       owners.set(key, current);
     }
     return Array.from(owners.values());
-  }, [statsLeads, statsRevenueByLeadId]);
+  }, [statsLeads]);
+
+  const agencyPocData = agencyPocChartData.length > 0 ? agencyPocChartData : agencyPocChartDataFallback;
 
   const startIndex = leads.length === 0 ? 0 : (currentPage - 1) * entriesPerPage + 1;
   const endIndex = (currentPage - 1) * entriesPerPage + leads.length;
@@ -686,10 +802,19 @@ export default function LeadTrackingPage() {
     return Array.from({ length: end - start + 1 }, (_, i) => start + i);
   }, [totalPages, currentPage, canGoNext]);
 
-  const statusChartData = useMemo(
-    () => STATUS_OPTIONS.map((status) => ({ status, count: statusCounts[status] || 0 })),
-    [statusCounts]
-  );
+  const statusChartData = useMemo(() => {
+    if (statusCountsFromApi && Object.keys(statusCountsFromApi).length > 0) {
+      return Object.entries(statusCountsFromApi).map(([status, count]) => ({
+        status: status === "unknown" ? "Unknown" : status,
+        count: Number(count) || 0,
+      }));
+    }
+
+    return STATUS_OPTIONS.map((status) => ({
+      status,
+      count: statusCountsFallback[status] || 0,
+    }));
+  }, [statusCountsFromApi, statusCountsFallback]);
 
   return (
     <main className="space-y-6">
@@ -754,9 +879,17 @@ export default function LeadTrackingPage() {
             <p className="mt-3 text-3xl font-bold tracking-tight text-slate-900">
               {formatRevenue(totalPipeline)}
             </p>
-            <p className="mt-1 text-xs text-slate-500">Based on expected revenue fields</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {totalRevenueFromApi !== null
+                ? "Based on backend pipeline totals"
+                : "Based on expected revenue fields"}
+            </p>
           </div>
-          <div className="relative overflow-hidden rounded-2xl bg-white p-5 shadow-md shadow-slate-200/70 ring-1 ring-slate-200/90">
+          <button
+            type="button"
+            onClick={handleFollowUpsCardClick}
+            className="relative overflow-hidden rounded-2xl bg-white p-5 text-left shadow-md shadow-slate-200/70 ring-1 ring-slate-200/90 transition hover:-translate-y-0.5 hover:shadow-lg"
+          >
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
               Follow-ups next 7 days
             </p>
@@ -766,7 +899,7 @@ export default function LeadTrackingPage() {
             <p className="mt-1 text-xs text-slate-500">
               Keep these hot leads moving
             </p>
-          </div>
+          </button>
         </section>
       )}
 
@@ -782,53 +915,58 @@ export default function LeadTrackingPage() {
             <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Owner vs pipeline
+                  Agency & POC
                 </p>
                 <p className="text-sm font-medium text-slate-900">
-                  Approx. value per lead owner
+                  Lead totals from agency-total API
                 </p>
               </div>
             </div>
             <div className="mt-3 h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={byOwnerChartData} margin={{ left: -20 }}>
+                <BarChart data={agencyPocData} margin={{ left: -20 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                   <XAxis
-                    dataKey="owner"
+                    dataKey="label"
                     tickLine={false}
                     axisLine={false}
                     tick={{ fontSize: 11, fill: "#6b7280" }}
+                    interval={0}
+                    angle={-20}
+                    textAnchor="end"
+                    height={60}
                   />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fontSize: 10, fill: "#9ca3af" }}
-                    tickFormatter={(value) => formatCompactIndian(value)}
-                    width={56}
-                  />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: "#9ca3af" }} width={40} />
                   <Tooltip
                     cursor={{ fill: "rgba(79,70,229,0.03)" }}
-                    content={({ active, payload, label }) => {
+                    content={({ active, payload }) => {
                       if (!active || !payload?.length) return null;
                       const row = payload[0].payload;
                       return (
                         <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
-                          <p className="font-semibold text-slate-900">{label}</p>
+                          <p className="font-semibold text-slate-900">{row.name}</p>
                           <p className="mt-1 text-slate-600">
-                            Leads:{" "}
-                            <span className="font-semibold text-slate-900">{row.leads}</span>
+                            Type: <span className="font-semibold text-slate-900">{row.kind}</span>
                           </p>
                           <p className="text-slate-600">
-                            Pipeline:{" "}
-                            <span className="font-semibold text-slate-900">
-                              {formatRevenue(row.value)}
-                            </span>
+                            Leads: <span className="font-semibold text-slate-900">{row.total}</span>
+                          </p>
+                          <p className="text-slate-600">
+                            Revenue: <span className="font-semibold text-slate-900">{formatRevenue(row.revenue)}</span>
                           </p>
                         </div>
                       );
                     }}
                   />
-                  <Bar dataKey="value" fill="#4f46e5" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="total" fill="#4f46e5" radius={[6, 6, 0, 0]}>
+                    <LabelList
+                      dataKey="total"
+                      position="top"
+                      fill="#0f172a"
+                      fontSize={11}
+                      fontWeight={600}
+                    />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -891,9 +1029,38 @@ export default function LeadTrackingPage() {
       )}
 
       {/* Leads table */}
-      <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+      <section
+        ref={setTableSectionEl}
+        className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200"
+      >
         <div className="flex flex-wrap items-center gap-4 border-b border-slate-200 bg-slate-50/80 px-4 py-3">
           <p className="text-sm font-medium text-slate-800">All leads</p>
+          <input
+            type="text"
+            value={searchLead}
+            onChange={(e) => setSearchLead(e.target.value)}
+            placeholder="Search lead..."
+            className="w-48 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 shadow-sm"
+          />
+          <select
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm"
+          >
+            <option value="">All priority</option>
+            <option value="Hot">Hot</option>
+            <option value="Cold">Cold</option>
+            <option value="Not Interested">Not Interested</option>
+          </select>
+          {followUpWindowActive && (
+            <button
+              type="button"
+              onClick={() => setFollowUpWindowActive(false)}
+              className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700"
+            >
+              Next 7 days filter active (clear)
+            </button>
+          )}
           <div className="flex items-center gap-2">
             <span className="text-sm text-slate-600">Show</span>
             <select
@@ -1291,7 +1458,7 @@ export default function LeadTrackingPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700">
-                  Primary channel <span className="text-rose-500">*</span>
+                  Primary channel
                 </label>
                 <select
                   value={lead.primaryChannel}
@@ -1829,7 +1996,7 @@ export default function LeadTrackingPage() {
               <div className="grid gap-4 md:grid-cols-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700">
-                    Expense model <span className="text-rose-500">*</span>
+                    Expense model
                   </label>
                   <select
                     value={lead.expenseModel}
@@ -1849,7 +2016,7 @@ export default function LeadTrackingPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700">
-                    Payment terms <span className="text-rose-500">*</span>
+                    Payment terms
                   </label>
                   <select
                     value={lead.paymentTerms}
