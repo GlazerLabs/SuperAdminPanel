@@ -340,7 +340,18 @@ function toAgencyPocChartData(payload) {
     };
   });
 
-  return [...agencyRows, ...pocRows].filter((row) => row.total > 0);
+  return [...agencyRows, ...pocRows]
+    .filter((row) => row.total > 0)
+    .sort((a, b) => b.total - a.total);
+}
+
+const AGENCY_POC_BAR_WIDTH = 72;
+const AGENCY_POC_CHART_MIN_WIDTH = 320;
+
+function truncateChartLabel(value, maxLen = 12) {
+  const s = String(value || "").trim();
+  if (s.length <= maxLen) return s;
+  return `${s.slice(0, maxLen)}…`;
 }
 
 export default function LeadTrackingPage() {
@@ -775,6 +786,11 @@ export default function LeadTrackingPage() {
 
   const agencyPocData = agencyPocChartData.length > 0 ? agencyPocChartData : agencyPocChartDataFallback;
 
+  const agencyPocChartWidth = useMemo(
+    () => Math.max(agencyPocData.length * AGENCY_POC_BAR_WIDTH, AGENCY_POC_CHART_MIN_WIDTH),
+    [agencyPocData.length]
+  );
+
   const startIndex = leads.length === 0 ? 0 : (currentPage - 1) * entriesPerPage + 1;
   const endIndex = (currentPage - 1) * entriesPerPage + leads.length;
   const totalPages = totalCount > 0 ? Math.ceil(totalCount / entriesPerPage) : null;
@@ -912,7 +928,7 @@ export default function LeadTrackingPage() {
       ) : (
         <section className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl bg-white p-4 shadow-md shadow-slate-200/60 ring-1 ring-slate-200/80">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Agency & POC
@@ -921,55 +937,79 @@ export default function LeadTrackingPage() {
                   Lead totals from agency-total API
                 </p>
               </div>
+              {agencyPocData.length > 0 && (
+                <p className="text-[11px] text-slate-500">
+                  {agencyPocData.length} entries
+                  {agencyPocData.length > 5 ? " · scroll horizontally →" : ""}
+                </p>
+              )}
             </div>
-            <div className="mt-3 h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={agencyPocData} margin={{ left: -20 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                  <XAxis
-                    dataKey="label"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fontSize: 11, fill: "#6b7280" }}
-                    interval={0}
-                    angle={-20}
-                    textAnchor="end"
-                    height={60}
-                  />
-                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: "#9ca3af" }} width={40} />
-                  <Tooltip
-                    cursor={{ fill: "rgba(79,70,229,0.03)" }}
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null;
-                      const row = payload[0].payload;
-                      return (
-                        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
-                          <p className="font-semibold text-slate-900">{row.name}</p>
-                          <p className="mt-1 text-slate-600">
-                            Type: <span className="font-semibold text-slate-900">{row.kind}</span>
-                          </p>
-                          <p className="text-slate-600">
-                            Leads: <span className="font-semibold text-slate-900">{row.total}</span>
-                          </p>
-                          <p className="text-slate-600">
-                            Revenue: <span className="font-semibold text-slate-900">{formatRevenue(row.revenue)}</span>
-                          </p>
-                        </div>
-                      );
-                    }}
-                  />
-                  <Bar dataKey="total" fill="#4f46e5" radius={[6, 6, 0, 0]}>
-                    <LabelList
-                      dataKey="total"
-                      position="top"
-                      fill="#0f172a"
-                      fontSize={11}
-                      fontWeight={600}
+            {agencyPocData.length === 0 ? (
+              <p className="mt-6 py-16 text-center text-sm text-slate-500">No agency or POC data yet.</p>
+            ) : (
+              <div className="mt-3 overflow-x-auto overscroll-x-contain rounded-xl border border-slate-100 bg-slate-50/40 pb-1">
+                <div style={{ width: agencyPocChartWidth, minWidth: "100%", height: 300 }}>
+                  <BarChart
+                    width={agencyPocChartWidth}
+                    height={300}
+                    data={agencyPocData}
+                    margin={{ top: 20, right: 12, left: 4, bottom: 64 }}
+                    barCategoryGap="20%"
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <XAxis
+                      dataKey="name"
+                      tickLine={false}
+                      axisLine={false}
+                      interval={0}
+                      tick={{ fontSize: 10, fill: "#6b7280" }}
+                      tickFormatter={(value) => truncateChartLabel(value, 14)}
+                      angle={-35}
+                      textAnchor="end"
+                      height={72}
                     />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+                    <YAxis
+                      allowDecimals={false}
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fontSize: 10, fill: "#9ca3af" }}
+                      width={36}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "rgba(79,70,229,0.03)" }}
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const row = payload[0].payload;
+                        return (
+                          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
+                            <p className="font-semibold text-slate-900">{row.name}</p>
+                            <p className="mt-1 text-slate-600">
+                              Type: <span className="font-semibold text-slate-900">{row.kind}</span>
+                            </p>
+                            <p className="text-slate-600">
+                              Leads: <span className="font-semibold text-slate-900">{row.total}</span>
+                            </p>
+                            <p className="text-slate-600">
+                              Revenue:{" "}
+                              <span className="font-semibold text-slate-900">{formatRevenue(row.revenue)}</span>
+                            </p>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Bar dataKey="total" fill="#4f46e5" radius={[6, 6, 0, 0]} maxBarSize={48}>
+                      <LabelList
+                        dataKey="total"
+                        position="top"
+                        fill="#0f172a"
+                        fontSize={11}
+                        fontWeight={600}
+                      />
+                    </Bar>
+                  </BarChart>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="rounded-2xl bg-white p-4 shadow-md shadow-slate-200/60 ring-1 ring-slate-200/80">
