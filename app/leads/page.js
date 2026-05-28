@@ -354,6 +354,21 @@ function truncateChartLabel(value, maxLen = 12) {
   return `${s.slice(0, maxLen)}…`;
 }
 
+function formatDateParam(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+/** Same window as lead-tracking list when filtering follow-ups (today → +7 days). */
+function getFollowUpNext7DaysRange() {
+  const today = new Date();
+  const end = new Date(today);
+  end.setDate(end.getDate() + 7);
+  return {
+    start_date: formatDateParam(today),
+    end_date: formatDateParam(end),
+  };
+}
+
 export default function LeadTrackingPage() {
   const [leads, setLeads] = useState([]);
   const [statsLeads, setStatsLeads] = useState([]);
@@ -361,6 +376,7 @@ export default function LeadTrackingPage() {
   const [agencyPocChartData, setAgencyPocChartData] = useState([]);
   const [totalLeadsFromApi, setTotalLeadsFromApi] = useState(null);
   const [totalRevenueFromApi, setTotalRevenueFromApi] = useState(null);
+  const [followUpsNext7DaysFromApi, setFollowUpsNext7DaysFromApi] = useState(null);
   const [loading, setLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -430,11 +446,24 @@ export default function LeadTrackingPage() {
         throw new Error(json?.message || "Invalid leads response");
       }
       let agencyTotalJson = null;
+      let followUpCountJson = null;
+      const followUpRange = getFollowUpNext7DaysRange();
       try {
         agencyTotalJson = await getApi("lead-tracking/agency-total");
       } catch (agencyErr) {
         // eslint-disable-next-line no-console
         console.error("Error loading agency totals", agencyErr);
+      }
+      try {
+        followUpCountJson = await getApi("lead-tracking", {
+          page: 1,
+          limit: 1,
+          start_date: followUpRange.start_date,
+          end_date: followUpRange.end_date,
+        });
+      } catch (followUpErr) {
+        // eslint-disable-next-line no-console
+        console.error("Error loading follow-up count", followUpErr);
       }
       if (isMountedRef.current) {
         setStatsLeads(json.data.map(mapApiLead));
@@ -448,6 +477,11 @@ export default function LeadTrackingPage() {
           Number.isFinite(Number(json.total_revenue)) ? Number(json.total_revenue) : null
         );
         setAgencyPocChartData(toAgencyPocChartData(agencyTotalJson));
+        if (followUpCountJson?.status === 1) {
+          setFollowUpsNext7DaysFromApi(extractLeadsTotal(followUpCountJson, 0));
+        } else {
+          setFollowUpsNext7DaysFromApi(null);
+        }
       }
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -473,22 +507,14 @@ export default function LeadTrackingPage() {
         setLoading(true);
         setError(null);
 
-        const today = new Date();
-        const end = new Date(today);
-        end.setDate(end.getDate() + 7);
-        const formatDate = (d) => d.toISOString().slice(0, 10);
+        const followUpRange = getFollowUpNext7DaysRange();
 
         const json = await getApi("lead-tracking", {
           page: currentPage,
           limit: entriesPerPage,
           ...(searchLead.trim() ? { search: searchLead.trim() } : {}),
           ...(priorityFilter ? { priority: priorityFilter } : {}),
-          ...(followUpWindowActive
-            ? {
-                start_date: formatDate(today),
-                end_date: formatDate(end),
-              }
-            : {}),
+          ...(followUpWindowActive ? followUpRange : {}),
         });
         if (!json || json.status !== 1 || !Array.isArray(json.data)) {
           throw new Error(json?.message || "Invalid leads response");
@@ -753,16 +779,7 @@ export default function LeadTrackingPage() {
     [statsLeads]
   );
 
-  const next7Days = useMemo(() => {
-    if (!statsLeads.length) return [];
-    const today = new Date();
-    return statsLeads.filter((l) => {
-      if (!l.nextFollowUpDate) return false;
-      const target = new Date(l.nextFollowUpDate);
-      const diffDays = (target - today) / (1000 * 60 * 60 * 24);
-      return diffDays >= 0 && diffDays <= 7;
-    });
-  }, [statsLeads]);
+  const followUpsNext7Count = followUpsNext7DaysFromApi ?? 0;
 
   const statusCountsFallback = useMemo(() => {
     const acc = Object.fromEntries(STATUS_OPTIONS.map((s) => [s, 0]));
@@ -910,7 +927,7 @@ export default function LeadTrackingPage() {
               Follow-ups next 7 days
             </p>
             <p className="mt-3 text-3xl font-bold tracking-tight text-slate-900">
-              {next7Days.length}
+              {followUpsNext7Count}
             </p>
             <p className="mt-1 text-xs text-slate-500">
               Keep these hot leads moving
