@@ -24,6 +24,7 @@ const titleMap = {
   "/app-analytics/active-users": "App Analytics",
   "/app-analytics/installs": "App Analytics",
   "/app-analytics/link-creation": "App Analytics",
+  "/achivements": "Achievements Analytics",
 };
 
 export default function AppHeader() {

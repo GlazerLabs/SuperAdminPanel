@@ -19,6 +19,7 @@ const ALL_PRIMARY_NAV = [
   { label: "Role Management", href: "/roles", icon: "shield", matchPrefix: true },
   { label: "Tournaments", href: "/tournaments", icon: "trophy" },
   { label: "Lead Tracking", href: "/leads", icon: "activity", matchPrefix: true },
+  { label: "Achievements Analytics", href: "/achivements", icon: "events" }, 
   // {
   //   label: "App Analytics",
   //   href: "/app-analytics",
@@ -131,6 +132,14 @@ function NavIcon({ type, active }) {
           <path d="M10 6H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h4" />
           <path d="M14 16l4-4-4-4" />
           <path d="M9 12h9" />
+        </svg>
+      );
+    case "events":
+      return (
+        <svg viewBox="0 0 24 24" className={base} fill="none" aria-hidden="true">
+          <path d="M5 6h14" />
+          <path d="M5 12h14" />
+          <path d="M5 18h14" />
         </svg>
       );
     default:

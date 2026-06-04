@@ -457,7 +457,7 @@ export default function LeadTrackingPage() {
       try {
         followUpCountJson = await getApi("lead-tracking", {
           page: 1,
-          limit: 1,
+          limit: STATS_FETCH_LIMIT,
           start_date: followUpRange.start_date,
           end_date: followUpRange.end_date,
         });
@@ -477,8 +477,8 @@ export default function LeadTrackingPage() {
           Number.isFinite(Number(json.total_revenue)) ? Number(json.total_revenue) : null
         );
         setAgencyPocChartData(toAgencyPocChartData(agencyTotalJson));
-        if (followUpCountJson?.status === 1) {
-          setFollowUpsNext7DaysFromApi(extractLeadsTotal(followUpCountJson, 0));
+        if (followUpCountJson?.status === 1 && Array.isArray(followUpCountJson.data)) {
+          setFollowUpsNext7DaysFromApi(followUpCountJson.data.length);
         } else {
           setFollowUpsNext7DaysFromApi(null);
         }
