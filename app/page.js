@@ -68,13 +68,20 @@ export default function Home() {
     }
 
     if (activePeriod === "Last Week") {
-      const start = new Date(today);
-      start.setDate(today.getDate() - 6);
+      const daysFromMonday = (today.getDay() + 6) % 7;
+      const startOfCurrentWeek = new Date(today);
+      startOfCurrentWeek.setDate(today.getDate() - daysFromMonday);
+      const end = new Date(startOfCurrentWeek);
+      end.setDate(startOfCurrentWeek.getDate() - 1);
+      const start = new Date(end);
+      start.setDate(end.getDate() - 6);
+      const startYmd = toYmdLocal(start);
+      const endYmd = toYmdLocal(end);
       return {
-        analyticsQuery: "days=7",
+        analyticsQuery: `startDate=${startYmd}&endDate=${endYmd}`,
         rangeLabelOverride: null,
         countStartIso: startOfDay(start).toISOString(),
-        countEndIso: endOfDay(today).toISOString(),
+        countEndIso: endOfDay(end).toISOString(),
       };
     }
 
@@ -102,13 +109,23 @@ export default function Home() {
       };
     }
 
-    // Last Month (default)
-    const start = new Date(today);
-    start.setDate(today.getDate() - 29);
+    if (activePeriod === "Last Month") {
+      const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const end = new Date(today.getFullYear(), today.getMonth(), 0);
+      const startYmd = toYmdLocal(start);
+      const endYmd = toYmdLocal(end);
+      return {
+        analyticsQuery: `startDate=${startYmd}&endDate=${endYmd}`,
+        rangeLabelOverride: null,
+        countStartIso: startOfDay(start).toISOString(),
+        countEndIso: endOfDay(end).toISOString(),
+      };
+    }
+
     return {
-      analyticsQuery: "days=30",
+      analyticsQuery: "days=7",
       rangeLabelOverride: null,
-      countStartIso: startOfDay(start).toISOString(),
+      countStartIso: startOfDay(today).toISOString(),
       countEndIso: endOfDay(today).toISOString(),
     };
   }, [activePeriod]);
