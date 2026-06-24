@@ -25,6 +25,7 @@ export default function Home() {
   const [newUsers, setNewUsers] = useState(null);
   const [userCountsLoading, setUserCountsLoading] = useState(true);
   const [copyStatus, setCopyStatus] = useState("idle"); // idle | copied | error
+  const [exportStatus, setExportStatus] = useState("idle"); // idle | loading | done | error
 
   const { analyticsQuery, rangeLabelOverride, countStartIso, countEndIso } = useMemo(() => {
     const toYmdLocal = (d) => {
@@ -302,6 +303,168 @@ export default function Home() {
     }
   };
 
+  const csvEscape = (val) => {
+    const s = val === undefined || val === null ? "" : String(val);
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  const formatSecondsForCsv = (seconds) => {
+    const totalSeconds = Math.round(Number(seconds) || 0);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const getLast15DayRange = () => {
+    const toYmdLocal = (d) => {
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    };
+    const startOfDay = (d) => {
+      const x = new Date(d);
+      x.setHours(0, 0, 0, 0);
+      return x;
+    };
+    const endOfDay = (d) => {
+      const x = new Date(d);
+      x.setHours(23, 59, 59, 999);
+      return x;
+    };
+    const today = new Date();
+    const start = new Date(today);
+    start.setDate(today.getDate() - 14);
+    return {
+      startYmd: toYmdLocal(start),
+      endYmd: toYmdLocal(today),
+      countStartIso: startOfDay(start).toISOString(),
+      countEndIso: endOfDay(today).toISOString(),
+    };
+  };
+
+  const handleExport = async () => {
+    try {
+      setExportStatus("loading");
+      const { startYmd, endYmd, countStartIso, countEndIso } = getLast15DayRange();
+
+      const [exportRes, userCountsRes] = await Promise.all([
+        fetch("/api/analytics/dashboard-export?days=15"),
+        fetchDashboardUserCounts(countStartIso, countEndIso),
+      ]);
+
+      const exportJson = await exportRes.json();
+      if (!exportRes.ok || !exportJson?.success) {
+        throw new Error(exportJson?.error || `Export failed with status ${exportRes.status}`);
+      }
+
+      const userRow = Array.isArray(userCountsRes?.data) ? userCountsRes.data[0] || {} : {};
+      const summary = {
+        ...exportJson.summary,
+        totalUsers: Number(userRow.totalUsers) || exportJson.summary?.totalUsers || 0,
+        newUsers: Number(userRow.users) || exportJson.summary?.newUsers || 0,
+      };
+      const daily = Array.isArray(exportJson.daily) ? exportJson.daily : [];
+
+      const avg = (values) => {
+        if (!values.length) return 0;
+        return values.reduce((sum, n) => sum + n, 0) / values.length;
+      };
+
+      const dailyAvg =
+        daily.length > 0
+          ? {
+              newUsers: Math.round(avg(daily.map((row) => row.newUsers))),
+              downloads: Math.round(avg(daily.map((row) => row.downloads))),
+              dau: Math.round(avg(daily.map((row) => row.dau))),
+              crashPercent: Number(avg(daily.map((row) => row.crashPercent)).toFixed(2)),
+              avgTimeSpentSeconds: avg(daily.map((row) => row.avgTimeSpentSeconds)),
+              adRequests: Math.round(avg(daily.map((row) => row.adRequests))),
+              adImpressions: Math.round(avg(daily.map((row) => row.adImpressions))),
+            }
+          : null;
+
+      const lines = [
+        `Dashboard Export - Last 15 Days (${startYmd} to ${endYmd})`,
+        "",
+        ["Metric", "Value", "Period"].map(csvEscape).join(","),
+        ["Total Users", summary.totalUsers, "Lifetime"].map(csvEscape).join(","),
+        ["New Users", summary.newUsers, "Last 15 days"].map(csvEscape).join(","),
+        ["Total Downloads", summary.totalDownloads, "Last 15 days"].map(csvEscape).join(","),
+        ["MAU", summary.mau, "Last 28 days"].map(csvEscape).join(","),
+        ["Avg DAU", summary.avgDau, "Last 15 days"].map(csvEscape).join(","),
+        ["Crash %", `${summary.crashPercent}%`, "Last 15 days"].map(csvEscape).join(","),
+        [
+          "Avg Time Spent",
+          formatSecondsForCsv(summary.avgTimeSpentSeconds),
+          "Last 15 days",
+        ].map(csvEscape).join(","),
+        ["Ad Requests", summary.adRequests, "Last 15 days"].map(csvEscape).join(","),
+        ["Ad Impressions", summary.adImpressions, "Last 15 days"].map(csvEscape).join(","),
+        "",
+        [
+          "Date",
+          "New Users",
+          "Downloads",
+          "DAU",
+          "Crash %",
+          "Avg Time Spent",
+          "Ad Requests",
+          "Ad Impressions",
+        ].map(csvEscape).join(","),
+        ...daily.map((row) =>
+          [
+            row.date,
+            row.newUsers,
+            row.downloads,
+            row.dau,
+            `${row.crashPercent}%`,
+            formatSecondsForCsv(row.avgTimeSpentSeconds),
+            row.adRequests,
+            row.adImpressions,
+          ]
+            .map(csvEscape)
+            .join(",")
+        ),
+        ...(dailyAvg
+          ? [
+              [
+                "Avg",
+                dailyAvg.newUsers,
+                dailyAvg.downloads,
+                dailyAvg.dau,
+                `${dailyAvg.crashPercent}%`,
+                formatSecondsForCsv(dailyAvg.avgTimeSpentSeconds),
+                dailyAvg.adRequests,
+                dailyAvg.adImpressions,
+              ]
+                .map(csvEscape)
+                .join(","),
+            ]
+          : []),
+      ];
+
+      const csv = lines.join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `dashboard-last-15-days-${endYmd}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setExportStatus("done");
+      window.setTimeout(() => setExportStatus("idle"), 1200);
+    } catch (e) {
+      console.error("Export failed:", e);
+      setExportStatus("error");
+      window.setTimeout(() => setExportStatus("idle"), 2000);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-slate-50">
       {/* Hero + period */}
@@ -330,38 +493,78 @@ export default function Home() {
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200/80 hover:bg-slate-50"
-            title="Copy stats"
-          >
-            <svg
-              className="h-4 w-4 text-slate-500"
-              viewBox="0 0 20 20"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={exportStatus === "loading"}
+              className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200/80 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              title="Export last 15 days as CSV"
             >
-              <path
-                d="M7.5 6.5V5.5C7.5 4.39543 8.39543 3.5 9.5 3.5H14.5C15.6046 3.5 16.5 4.39543 16.5 5.5V12.5C16.5 13.6046 15.6046 14.5 14.5 14.5H13.5"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-              <path
-                d="M5.5 6.5H10.5C11.6046 6.5 12.5 7.39543 12.5 8.5V15.5C12.5 16.6046 11.6046 17.5 10.5 17.5H5.5C4.39543 17.5 3.5 16.6046 3.5 15.5V8.5C3.5 7.39543 4.39543 6.5 5.5 6.5Z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              />
-            </svg>
-            <span>
-              {copyStatus === "copied"
-                ? "Copied"
-                : copyStatus === "error"
-                  ? "Copy failed"
-                  : "Copy"}
-            </span>
-          </button>
+              <svg
+                className="h-4 w-4 text-slate-500"
+                viewBox="0 0 20 20"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M10 3.5V11.5M10 11.5L7 8.5M10 11.5L13 8.5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M4.5 14.5V15.5C4.5 16.0523 4.94772 16.5 5.5 16.5H14.5C15.0523 16.5 15.5 16.0523 15.5 15.5V14.5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+              <span>
+                {exportStatus === "loading"
+                  ? "Exporting…"
+                  : exportStatus === "done"
+                    ? "Exported"
+                    : exportStatus === "error"
+                      ? "Export failed"
+                      : "Export"}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200/80 hover:bg-slate-50"
+              title="Copy stats"
+            >
+              <svg
+                className="h-4 w-4 text-slate-500"
+                viewBox="0 0 20 20"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M7.5 6.5V5.5C7.5 4.39543 8.39543 3.5 9.5 3.5H14.5C15.6046 3.5 16.5 4.39543 16.5 5.5V12.5C16.5 13.6046 15.6046 14.5 14.5 14.5H13.5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M5.5 6.5H10.5C11.6046 6.5 12.5 7.39543 12.5 8.5V15.5C12.5 16.6046 11.6046 17.5 10.5 17.5H5.5C4.39543 17.5 3.5 16.6046 3.5 15.5V8.5C3.5 7.39543 4.39543 6.5 5.5 6.5Z"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
+              </svg>
+              <span>
+                {copyStatus === "copied"
+                  ? "Copied"
+                  : copyStatus === "error"
+                    ? "Copy failed"
+                    : "Copy"}
+              </span>
+            </button>
+          </div>
         </div>
       </div>
 

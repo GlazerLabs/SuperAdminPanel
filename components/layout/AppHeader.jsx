@@ -25,6 +25,7 @@ const titleMap = {
   "/app-analytics/installs": "App Analytics",
   "/app-analytics/link-creation": "App Analytics",
   "/achivements": "Achievements Analytics",
+  "/kpi-analytics": "KPI Analytics",
 };
 
 export default function AppHeader() {
@@ -105,6 +106,8 @@ export default function AppHeader() {
       ? "Support Chat"
       : pathname?.startsWith("/app-analytics")
         ? "App Analytics"
+      : pathname?.startsWith("/kpi-analytics")
+        ? "KPI Analytics"
       : pathname?.startsWith("/tournaments")
         ? "Tournaments"
         : "Dashboard");
