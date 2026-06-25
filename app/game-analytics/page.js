@@ -437,7 +437,7 @@ function toDateInput(date) {
 function defaultRange() {
   const end = new Date();
   const start = new Date();
-  start.setDate(end.getDate() - 6); // last 7 days inclusive
+  start.setDate(end.getDate() - 6);
   return { startDate: toDateInput(start), endDate: toDateInput(end) };
 }
 
@@ -488,24 +488,27 @@ function ChartTooltip({ active, payload, label }) {
 
 // Helper function to normalize response data
 function normalizeAnalyticsResponse(data) {
-  // If data has a 'range' property, it's already in the new format
+  // If data has a 'range' property, it's in the new format
   if (data.range) {
+    const rangeOverall = data.range.overall || {};
+    
     return {
       ...data,
-      // Ensure top-level properties for backward compatibility
-      uniqueUsers: data.range.overall?.uniqueUsers || data.uniqueUsers,
-      totalPlays: data.range.overall?.totalPlays || data.totalPlays,
-      totalDurationMinutes: data.range.overall?.totalDurationMinutes || data.totalDurationMinutes,
-      avgDurationMinutes: data.range.overall?.avgDurationMinutes || data.avgDurationMinutes,
-      timeline: data.range.days?.map(day => ({
+      // Use range.overall for summary cards (range-specific totals)
+      uniqueUsers: rangeOverall.uniqueUsers || 0,
+      totalPlays: rangeOverall.totalPlays || 0,
+      totalDurationMinutes: rangeOverall.totalDurationMinutes || 0,
+      avgDurationMinutes: rangeOverall.avgDurationMinutes || 0,
+      // Build timeline from range.days for the chart
+      timeline: (data.range.days || []).map(day => ({
         date: day.day,
         label: day.day,
-        users: day.uniqueUsers,
-        plays: day.plays,
-        durationMinutes: day.totalDurationMinutes,
-        avgDurationMinutes: day.avgDurationMinutes
-      })) || [],
-      // Keep the original range data accessible
+        users: day.uniqueUsers || 0,
+        plays: day.plays || 0,
+        durationMinutes: day.totalDurationMinutes || 0,
+        avgDurationMinutes: day.avgDurationMinutes || 0
+      })),
+      // Keep the original range data accessible for CSV export
       _rangeData: data.range
     };
   }
@@ -513,24 +516,23 @@ function normalizeAnalyticsResponse(data) {
   // Handle old format (flat structure)
   return {
     ...data,
-    timeline: data.days?.map(day => ({
+    timeline: (data.days || []).map(day => ({
       date: day.day,
       label: day.day,
-      users: day.uniqueUsers,
-      plays: day.plays,
-      durationMinutes: day.totalDurationMinutes,
-      avgDurationMinutes: day.avgDurationMinutes
-    })) || [],
-    // Create a range object for consistency
+      users: day.uniqueUsers || 0,
+      plays: day.plays || 0,
+      durationMinutes: day.totalDurationMinutes || 0,
+      avgDurationMinutes: day.avgDurationMinutes || 0
+    })),
     _rangeData: {
       from: data.from,
       to: data.to,
       overall: {
-        totalPlays: data.totalPlays,
-        playsWithDuration: data.totalPlays,
-        uniqueUsers: data.uniqueUsers,
-        totalDurationMinutes: data.totalDurationMinutes,
-        avgDurationMinutes: data.avgDurationMinutes
+        totalPlays: data.totalPlays || 0,
+        playsWithDuration: data.totalPlays || 0,
+        uniqueUsers: data.uniqueUsers || 0,
+        totalDurationMinutes: data.totalDurationMinutes || 0,
+        avgDurationMinutes: data.avgDurationMinutes || 0
       },
       dateWise: data.dateWise,
       count: data.count,
