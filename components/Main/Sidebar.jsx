@@ -17,7 +17,7 @@ const ALL_PRIMARY_NAV = [
   { label: "Dashboard", href: "/", icon: "grid" },
   { label: "Members", href: "/members", icon: "org", matchPrefix: true },
   { label: "Role Management", href: "/roles", icon: "shield", matchPrefix: true },
-  { label: "Tournaments", href: "/tournaments", icon: "trophy" },
+  { label: "Tournament", href: "/tournaments", icon: "trophy" },
   { label: "Lead Tracking", href: "/leads", icon: "activity", matchPrefix: true },
   // { label: "Achievements Analytics", href: "/achivements", icon: "events" },
   { label: "KPI Analytics", href: "/kpi-analytics", icon: "analytics", matchPrefix: true },
