@@ -4,7 +4,11 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 ## Getting Started..........................
+=======
+## Getting Started........................
+>>>>>>> 055e7a1662157fe975b66181abd27bf0e54b5d14
 =======
 ## Getting Started................
 >>>>>>> c23c5194360f36527394a06b26be4217a239f119
