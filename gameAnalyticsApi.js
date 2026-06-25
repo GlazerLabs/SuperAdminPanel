@@ -132,9 +132,7 @@ const formatDayLabel = (dateKey) => {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
 
-export const fetchGamesList = async () => {
-  return MOCK_GAMES;
-};
+export const fetchGamesList = async () => MOCK_GAMES;
 
 export const fetchGameAnalytics = async ({ gameName, startDate, endDate }) => {
   if (!gameName) throw new Error("Game is required");
@@ -161,57 +159,47 @@ export const fetchGameAnalytics = async ({ gameName, startDate, endDate }) => {
     throw new Error(payload?.error || "Failed to load game analytics");
   }
 
-  // ── Detect which shape the API returned ──────────────────────────────────
-  //
-  // NEW shape:  payload.range.overall  +  payload.range.days
-  // OLD shape:  payload.overall (or flat payload)  +  payload.days
-
+  // payload.range exists  →  NEW shape
+  // payload.days exists   →  OLD shape
   const isNewShape = payload?.range && typeof payload.range === "object";
 
-  // Stats for the selected date range (drives the 4 summary cards)
+  // Summary cards → range-scoped stats
   const rangeOverall = isNewShape
-    ? payload.range.overall                                         // ← NEW
-    : payload?.overall && typeof payload.overall === "object"
-      ? payload.overall                                            // ← OLD object
-      : payload;                                                   // ← OLD flat
+    ? payload.range.overall          // NEW: { totalPlays, uniqueUsers, ... }
+    : payload?.overall ?? payload;   // OLD: top-level overall or flat payload
 
-  // Day-by-day rows (drives the chart)
+  // Chart → day-by-day rows
   const days = isNewShape
-    ? Array.isArray(payload.range.days) ? payload.range.days : [] // ← NEW
-    : Array.isArray(payload?.days) ? payload.days : [];           // ← OLD
+    ? payload.range.days ?? []       // NEW: range.days
+    : payload?.days ?? [];           // OLD: payload.days
 
-  // All-time stats exposed by new shape (payload.overall)
-  const allTimeOverall = isNewShape ? payload.overall : null;
-
-  // ── Build timeline array ─────────────────────────────────────────────────
   const timeline = days.map((row) => {
     const date = String(row?.day ?? row?.date ?? "").trim();
     return {
       date,
-      label: formatDayLabel(date),
-      users: pickNum(row?.uniqueUsers, row?.users),
-      plays: pickNum(row?.plays, row?.count),
+      label:           formatDayLabel(date),
+      users:           pickNum(row?.uniqueUsers, row?.users),
+      plays:           pickNum(row?.plays,       row?.count),
       durationMinutes: pickNum(row?.totalDurationMinutes, row?.durationMinutes),
     };
   });
 
-  // ── Return normalised object consumed by the page component ──────────────
   return {
     gameName,
 
-    // Range-scoped values → summary cards
+    // ↓ These four feed the summary cards
     uniqueUsers:          pickNum(rangeOverall?.uniqueUsers,          payload?.uniqueUsers),
     totalPlays:           pickNum(rangeOverall?.totalPlays,           payload?.totalPlays),
     totalDurationMinutes: pickNum(rangeOverall?.totalDurationMinutes, payload?.totalDurationMinutes),
     avgDurationMinutes:   pickNum(rangeOverall?.avgDurationMinutes,   payload?.avgDurationMinutes),
 
-    // All-time values (null when old shape)
-    allTime: allTimeOverall
+    // ↓ All-time stats (only in new shape, null otherwise)
+    allTime: isNewShape
       ? {
-          uniqueUsers:          pickNum(allTimeOverall.uniqueUsers),
-          totalPlays:           pickNum(allTimeOverall.totalPlays),
-          totalDurationMinutes: pickNum(allTimeOverall.totalDurationMinutes),
-          avgDurationMinutes:   pickNum(allTimeOverall.avgDurationMinutes),
+          uniqueUsers:          pickNum(payload.overall?.uniqueUsers),
+          totalPlays:           pickNum(payload.overall?.totalPlays),
+          totalDurationMinutes: pickNum(payload.overall?.totalDurationMinutes),
+          avgDurationMinutes:   pickNum(payload.overall?.avgDurationMinutes),
         }
       : null,
 
