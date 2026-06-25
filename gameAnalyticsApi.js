@@ -161,7 +161,7 @@ export const fetchGameAnalytics = async ({ gameName, startDate, endDate }) => {
 
   // payload.range exists  →  NEW shape
   // payload.days exists   →  OLD shape
-  const isNewShape = payload?.range && typeof payload.range === "object";
+  const isNewShape = Array.isArray(payload?.range?.days);
 
   // Summary cards → range-scoped stats
   const rangeOverall = isNewShape
