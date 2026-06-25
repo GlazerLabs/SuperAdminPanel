@@ -486,15 +486,16 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-// Helper function to normalize response data
+// Helper function to normalize response data - handles both old and new formats
 function normalizeAnalyticsResponse(data) {
   // If data has a 'range' property, it's in the new format
   if (data.range) {
+    // Use range.overall for the range-specific totals
     const rangeOverall = data.range.overall || {};
     
     return {
       ...data,
-      // Use range.overall for summary cards (range-specific totals)
+      // Use range.overall for summary cards (these are the range-specific totals)
       uniqueUsers: rangeOverall.uniqueUsers || 0,
       totalPlays: rangeOverall.totalPlays || 0,
       totalDurationMinutes: rangeOverall.totalDurationMinutes || 0,
@@ -508,8 +509,9 @@ function normalizeAnalyticsResponse(data) {
         durationMinutes: day.totalDurationMinutes || 0,
         avgDurationMinutes: day.avgDurationMinutes || 0
       })),
-      // Keep the original range data accessible for CSV export
-      _rangeData: data.range
+      // Keep the original data for reference
+      _rangeData: data.range,
+      _overallData: data.overall
     };
   }
   
@@ -610,7 +612,6 @@ export default function GameAnalyticsPage() {
   const selectedGame = games.find((g) => String(g.id) === String(selectedGameId));
 
   const handleExportCsv = useCallback(() => {
-    // Use the days data from the range if available
     const daysData = analytics?._rangeData?.days || analytics?.days || [];
     if (!daysData.length) return;
 
