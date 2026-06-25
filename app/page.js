@@ -494,7 +494,7 @@ export default function Home() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
+            {/* <button
               type="button"
               onClick={handleExport}
               disabled={exportStatus === "loading"}
@@ -530,7 +530,7 @@ export default function Home() {
                       ? "Export failed"
                       : "Export"}
               </span>
-            </button>
+            </button> */}
 
             <button
               type="button"

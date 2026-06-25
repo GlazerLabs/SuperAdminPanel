@@ -21,6 +21,7 @@ const ALL_PRIMARY_NAV = [
   { label: "Lead Tracking", href: "/leads", icon: "activity", matchPrefix: true },
   // { label: "Achievements Analytics", href: "/achivements", icon: "events" },
   { label: "KPI Analytics", href: "/kpi-analytics", icon: "analytics", matchPrefix: true },
+  { label: "Game Analytics", href: "/game-analytics", icon: "gamepad", matchPrefix: true },
   // {
   //   label: "App Analytics",
   //   href: "/app-analytics",
@@ -125,6 +126,15 @@ function NavIcon({ type, active }) {
           <rect x="6" y="10" width="2.5" height="7" rx="1" />
           <rect x="11" y="7" width="2.5" height="10" rx="1" />
           <rect x="16" y="5" width="2.5" height="12" rx="1" />
+        </svg>
+      );
+    case "gamepad":
+      return (
+        <svg viewBox="0 0 24 24" className={base} fill="none" aria-hidden="true">
+          <path d="M7 12h4M9 10v4" />
+          <circle cx="15.5" cy="11" r="0.6" fill="currentColor" stroke="none" />
+          <circle cx="17.5" cy="13" r="0.6" fill="currentColor" stroke="none" />
+          <path d="M6.5 7h11a3.5 3.5 0 0 1 3.4 4.3l-1 4.3A2.5 2.5 0 0 1 15 16h-6a2.5 2.5 0 0 1-4.4.6l-1-4.3A3.5 3.5 0 0 1 6.5 7Z" />
         </svg>
       );
     case "logout":
