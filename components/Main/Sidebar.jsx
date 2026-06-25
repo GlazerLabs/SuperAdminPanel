@@ -343,9 +343,20 @@ export default function Sidebar() {
 
   const implicitFullAccess = !!myAccess?.data?.[0]?.implicit_full_access_frontend;
   const modules = myAccess?.data?.[0]?.frontend_modules || {};
-  const primaryNav = implicitFullAccess
+  const basePrimaryNav = implicitFullAccess
     ? ALL_PRIMARY_NAV
     : buildNavFromModules(modules, SUPER_ADMIN_MODULE_NAV, MODULE_ROUTE_ORDER);
+
+  // Game Analytics must be visible to every user regardless of module access.
+  const gameAnalyticsItem = {
+    label: "Game Analytics",
+    href: "/game-analytics",
+    icon: "gamepad",
+    matchPrefix: true,
+  };
+  const primaryNav = basePrimaryNav.some((item) => item.href === gameAnalyticsItem.href)
+    ? basePrimaryNav
+    : [...basePrimaryNav, gameAnalyticsItem];
 
   const allowedSecondaryNav = implicitFullAccess
     ? secondaryNav.filter((item) => item.action !== "logout")
