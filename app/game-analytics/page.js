@@ -20,6 +20,21 @@ const VIOLET = "#7c3aed";
 const EMERALD = "#059669";
 const tickStyle = { fontSize: 13, fill: "#64748b", fontWeight: 500 };
 
+const ALL_TIME_CARDS = [
+  {
+    key: "totalPlays",
+    label: "Total Players",
+    hint: "All time",
+    format: "count",
+  },
+  {
+    key: "uniqueUsers",
+    label: "Unique users",
+    hint: "All time",
+    format: "count",
+  },
+];
+
 const SUMMARY_CARDS = [
   {
     key: "uniqueUsers",
@@ -262,7 +277,27 @@ export default function GameAnalyticsPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2">
+        {isLoading
+          ? ALL_TIME_CARDS.map((card) => <ShimmerCard key={card.key} />)
+          : ALL_TIME_CARDS.map((card) => (
+              <div
+                key={card.key}
+                className="dashboard-card-fade-up relative overflow-hidden rounded-2xl bg-linear-to-br from-indigo-600 to-violet-600 p-5 shadow-md shadow-indigo-200/60"
+              >
+                <div className="absolute right-0 top-0 h-20 w-20 translate-x-4 -translate-y-4 rounded-full bg-white/10" />
+                <p className="text-xs font-medium uppercase tracking-wider text-indigo-100">
+                  {card.label}
+                </p>
+                <p className="mt-2 text-3xl font-bold tracking-tight text-white">
+                  {formatCardValue(analytics?.allTime?.[card.key], card.format)}
+                </p>
+                <p className="mt-2 text-xs text-indigo-100/80">{card.hint}</p>
+              </div>
+            ))}
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {isLoading
           ? SUMMARY_CARDS.map((card) => <ShimmerCard key={card.key} />)
           : SUMMARY_CARDS.map((card) => (

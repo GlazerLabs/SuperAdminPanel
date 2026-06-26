@@ -75,8 +75,18 @@ export const fetchGameAnalytics = async ({ gameName, startDate, endDate }) => {
     throw new Error(payload?.error || "Failed to load game analytics");
   }
 
-  const overall = payload?.overall && typeof payload.overall === "object" ? payload.overall : payload;
-  const days = Array.isArray(payload?.days) ? payload.days : [];
+  const range = payload?.range && typeof payload.range === "object" ? payload.range : null;
+  const rangeOverall =
+    range?.overall && typeof range.overall === "object" ? range.overall : null;
+  const allTimeOverall =
+    payload?.overall && typeof payload.overall === "object" ? payload.overall : null;
+
+  // New shape: range.days. Legacy shape: days at root.
+  const days = Array.isArray(range?.days)
+    ? range.days
+    : Array.isArray(payload?.days)
+      ? payload.days
+      : [];
 
   const timeline = days.map((row) => {
     const date = String(row?.day ?? row?.date ?? "").trim();
@@ -89,12 +99,23 @@ export const fetchGameAnalytics = async ({ gameName, startDate, endDate }) => {
     };
   });
 
+  // Cards use the selected date-range stats when present.
+  const summary = rangeOverall || allTimeOverall || payload;
+
   return {
     gameName,
-    uniqueUsers: pickNum(payload?.uniqueUsers, overall?.uniqueUsers),
-    totalPlays: pickNum(payload?.totalPlays, overall?.totalPlays),
-    totalDurationMinutes: pickNum(payload?.totalDurationMinutes, overall?.totalDurationMinutes),
-    avgDurationMinutes: pickNum(payload?.avgDurationMinutes, overall?.avgDurationMinutes),
+    uniqueUsers: pickNum(summary?.uniqueUsers, payload?.uniqueUsers),
+    totalPlays: pickNum(summary?.totalPlays, payload?.totalPlays),
+    totalDurationMinutes: pickNum(summary?.totalDurationMinutes, payload?.totalDurationMinutes),
+    avgDurationMinutes: pickNum(summary?.avgDurationMinutes, payload?.avgDurationMinutes),
+    allTime: allTimeOverall
+      ? {
+          uniqueUsers: pickNum(allTimeOverall.uniqueUsers),
+          totalPlays: pickNum(allTimeOverall.totalPlays),
+          totalDurationMinutes: pickNum(allTimeOverall.totalDurationMinutes),
+          avgDurationMinutes: pickNum(allTimeOverall.avgDurationMinutes),
+        }
+      : null,
     timeline,
     raw: payload,
   };
