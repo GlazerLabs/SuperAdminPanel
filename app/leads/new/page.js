@@ -357,6 +357,12 @@ export default function NewLeadPage() {
   const imageInputRef = useRef(null);
   const requestLockRef = useRef(false);
 
+  const hasLeadUpdates = useMemo(() => {
+    const updates = selectedLead?.lead_updates;
+    return Array.isArray(updates) && updates.length > 0;
+  }, [selectedLead]);
+  const isRevenueValueLocked = isEditMode && hasLeadUpdates;
+
   const showProposalBasicsFields = useMemo(
     () =>
       lead.currentStatus === "Proposal Shared" ||
@@ -2197,14 +2203,38 @@ export default function NewLeadPage() {
                         <label className="block text-sm font-medium text-slate-700">
                           Value (₹)
                         </label>
-                        <input
-                          type="text"
-                          value={lead.expectedRevenueValue}
-                          onChange={handleChange("expectedRevenueValue")}
-                          onBlur={handleExpectedRevenueValueBlur}
-                          className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          placeholder="E.g. 800000, 8l, 1 cr, 1.5 lakh"
-                        />
+                        <div
+                          title={
+                            isRevenueValueLocked
+                              ? "This value is locked because this lead already has updates. It can't be changed now."
+                              : undefined
+                          }
+                          className={isRevenueValueLocked ? "cursor-not-allowed" : undefined}
+                        >
+                          <input
+                            type="text"
+                            value={lead.expectedRevenueValue}
+                            onChange={handleChange("expectedRevenueValue")}
+                            onBlur={handleExpectedRevenueValueBlur}
+                            disabled={isRevenueValueLocked}
+                            title={
+                              isRevenueValueLocked
+                                ? "This value is locked because this lead already has updates. It can't be changed now."
+                                : undefined
+                            }
+                            className={`mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
+                              isRevenueValueLocked
+                                ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                                : "bg-slate-50 text-slate-900"
+                            }`}
+                            placeholder="E.g. 800000, 8l, 1 cr, 1.5 lakh"
+                          />
+                        </div>
+                        {isRevenueValueLocked && (
+                          <p className="mt-1 text-[11px] text-amber-600">
+                            This value is locked because this lead already has updates.
+                          </p>
+                        )}
                         <p className="mt-1 text-[11px] text-slate-500">
                           Spaces and case don&apos;t matter: <span className="font-medium text-slate-600">1cr</span>,{" "}
                           <span className="font-medium text-slate-600">1 cr</span>,{" "}
