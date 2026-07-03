@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import KpiApprovalsPanel from "@/components/kpi-analytics/KpiApprovalsPanel";
+import ApprovalsPanel from "@/components/kpi-analytics/ApprovalsPanel";
 import KpiPerformanceTable from "@/components/kpi-analytics/KpiPerformanceTable";
 import KpiReferralPanel from "@/components/kpi-analytics/KpiReferralPanel";
 import {
@@ -202,9 +202,9 @@ export default function KpiAnalyticsPage() {
 
   return (
     <main className="space-y-6">
-      <TabBar tabs={PAGE_TABS} active={activeTab} onChange={setActiveTab} />
+      <TabBar tabs={PAGE_TABS} active={activeTab} onChange={setActiveTab} variant="underline" />
 
-      {activeTab === "approvals" ? <KpiApprovalsPanel /> : null}
+      {activeTab === "approvals" ? <ApprovalsPanel /> : null}
 
       {activeTab === "analytics" ? (
         <div className="space-y-6">

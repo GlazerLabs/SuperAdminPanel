@@ -310,3 +310,65 @@ export const updateKpiApprovalStatus = async (kpiId, status) => {
 
   return response;
 };
+
+const normalizeLoginStreakRow = (row) => {
+  const creator = row?.created_by && typeof row.created_by === "object" ? row.created_by : {};
+  return {
+    id: row?.id ?? row?.reward_id ?? row?.rewardId,
+    day: pickNum(row?.day, row?.streak_day, row?.day_number),
+    normalGems: pickNum(row?.normal_gems, row?.normalGems),
+    adGems: pickNum(row?.ad_gems, row?.adGems),
+    isActive: row?.is_active ?? row?.isActive ?? null,
+    status: String(row?.status ?? "").toLowerCase(),
+    createdAt: row?.created_at ?? row?.createdAt ?? null,
+    updatedAt: row?.updated_at ?? row?.updatedAt ?? null,
+    createdById: creator?.id ?? row?.created_by_id ?? null,
+    createdByName: String(
+      creator?.full_name ?? creator?.username ?? creator?.email ?? ""
+    ),
+    createdByAvatar: creator?.profile_pic_url ?? null,
+    raw: row,
+  };
+};
+
+export const fetchLoginStreakRewards = async () => {
+  const response = await getApi("login-streak/admin/rewards");
+
+  if (response?.status === 0) {
+    const err = response?.message || response?.data?.error || "Failed to load login streak rewards";
+    throw new Error(typeof err === "string" ? err : "Failed to load login streak rewards");
+  }
+
+  const data = response?.data;
+  const rows = pickArray(
+    Array.isArray(data) ? data : null,
+    data?.rewards,
+    data?.rows,
+    data?.list,
+    data?.data
+  ).map(normalizeLoginStreakRow);
+
+  return { rows, raw: response };
+};
+
+export const updateLoginStreakRewardStatus = async (ids, status) => {
+  const idList = (Array.isArray(ids) ? ids : [ids]).filter((id) => id != null && id !== "");
+  if (!idList.length) {
+    throw new Error("At least one reward ID is required");
+  }
+
+  const response = await putApi("login-streak/super-admin/revards-aproval", {
+    status,
+    ids: idList,
+  });
+
+  if (response?.status === 0) {
+    const err =
+      response?.data?.error ||
+      response?.message ||
+      "Failed to update login streak reward status";
+    throw new Error(typeof err === "string" ? err : "Failed to update login streak reward status");
+  }
+
+  return response;
+};

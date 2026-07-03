@@ -10,18 +10,53 @@ function formatCompact(n) {
   return `${(num / 1000).toFixed(1).replace(/\.0$/, "")}k`;
 }
 
-function UserAvatar({ name }) {
+const AVATAR_TONES = [
+  "bg-indigo-100 text-indigo-700",
+  "bg-emerald-100 text-emerald-700",
+  "bg-amber-100 text-amber-700",
+  "bg-sky-100 text-sky-700",
+  "bg-rose-100 text-rose-700",
+  "bg-violet-100 text-violet-700",
+];
+
+function toneFor(id) {
+  const n = Math.abs(Number(String(id).replace(/\D/g, "")) || 0);
+  return AVATAR_TONES[n % AVATAR_TONES.length];
+}
+
+function UserAvatar({ name, id, size = "md" }) {
   const initial = name?.trim()?.charAt(0)?.toUpperCase() || "?";
+  const sizeClass = size === "lg" ? "h-12 w-12 text-lg" : "h-9 w-9 text-sm";
   return (
-    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700">
+    <div
+      className={`flex shrink-0 items-center justify-center rounded-full font-semibold ${sizeClass} ${toneFor(id)}`}
+    >
       {initial}
     </div>
   );
 }
 
-function countDirectReferrals(nodes) {
+function RankBadge({ rank }) {
+  const styles =
+    rank === 1
+      ? "bg-amber-100 text-amber-700 ring-amber-200"
+      : rank === 2
+        ? "bg-slate-200 text-slate-700 ring-slate-300"
+        : rank === 3
+          ? "bg-orange-100 text-orange-700 ring-orange-200"
+          : "bg-slate-50 text-slate-400 ring-slate-200";
+  return (
+    <span
+      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ring-1 ${styles}`}
+    >
+      {rank}
+    </span>
+  );
+}
+
+function countTreeMembers(nodes) {
   if (!Array.isArray(nodes)) return 0;
-  return nodes.reduce((sum, node) => sum + 1 + countDirectReferrals(node.children), 0);
+  return nodes.reduce((sum, node) => sum + 1 + countTreeMembers(node.children), 0);
 }
 
 function flattenTree(nodes, depth = 0, acc = []) {
@@ -41,7 +76,7 @@ function ReferralTreeList({ nodes, onSelect, selectedUserId }) {
   }
 
   return (
-    <ul className="divide-y divide-slate-100">
+    <ul className="p-2">
       {flat.map((node) => {
         const isSelected = String(node.id) === String(selectedUserId);
         const isRoot = node.depth === 0;
@@ -51,21 +86,33 @@ function ReferralTreeList({ nodes, onSelect, selectedUserId }) {
             <button
               type="button"
               onClick={() => onSelect?.(node.id)}
-              style={{ paddingLeft: `${12 + node.depth * 16}px` }}
-              className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition ${
-                isSelected ? "bg-indigo-50" : "hover:bg-slate-50"
+              className={`flex w-full items-stretch gap-0 rounded-lg text-left transition ${
+                isSelected ? "bg-indigo-50 ring-1 ring-indigo-200" : "hover:bg-slate-50"
               }`}
             >
-              <UserAvatar name={node.name} />
-              <div className="min-w-0 flex-1">
-                <p className={`truncate text-sm ${isRoot ? "font-semibold text-slate-900" : "font-medium text-slate-800"}`}>
-                  {node.name}
-                </p>
-                <p className="truncate text-xs text-slate-400">#{node.id}</p>
+              {Array.from({ length: node.depth }).map((_, i) => (
+                <span key={i} className="ml-3 w-3 shrink-0 border-l border-dashed border-slate-200" />
+              ))}
+              <div className="flex flex-1 items-center gap-3 px-3 py-2.5">
+                <UserAvatar name={node.name} id={node.id} />
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`truncate text-sm ${isRoot ? "font-semibold text-slate-900" : "font-medium text-slate-700"}`}
+                  >
+                    {node.name}
+                  </p>
+                  <p className="truncate text-xs text-slate-400">#{node.id}</p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold tabular-nums ${
+                    node.referralCount > 0
+                      ? "bg-indigo-100 text-indigo-700"
+                      : "bg-slate-100 text-slate-400"
+                  }`}
+                >
+                  {formatCompact(node.referralCount)}
+                </span>
               </div>
-              <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium tabular-nums text-slate-600">
-                {formatCompact(node.referralCount)} refs
-              </span>
             </button>
           </li>
         );
@@ -80,9 +127,6 @@ export default function KpiReferralPanel({
   referralTree,
   selectedUserId,
   onSelectUser,
-  treeUserId,
-  onTreeUserIdChange,
-  onTreeSearch,
   treeLoading,
   treeError,
 }) {
@@ -98,166 +142,178 @@ export default function KpiReferralPanel({
     [referralUsers]
   );
 
+  const rankedUsers = useMemo(
+    () =>
+      [...referralUsers]
+        .map((row, idx) => ({ ...row, rank: idx + 1 }))
+        .sort((a, b) => (b.referralCount || 0) - (a.referralCount || 0))
+        .map((row, idx) => ({ ...row, rank: idx + 1 })),
+    [referralUsers]
+  );
+
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return referralUsers;
-    return referralUsers.filter(
+    if (!q) return rankedUsers;
+    return rankedUsers.filter(
       (row) =>
         row.name.toLowerCase().includes(q) ||
         row.email.toLowerCase().includes(q) ||
         row.referralCode.toLowerCase().includes(q) ||
         String(row.id).includes(q)
     );
-  }, [referralUsers, search]);
+  }, [rankedUsers, search]);
 
-  const treeMemberCount = useMemo(() => countDirectReferrals(referralTree), [referralTree]);
+  const treeMemberCount = useMemo(() => countTreeMembers(referralTree), [referralTree]);
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-white shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80">
-      <div className="grid min-h-112 xl:grid-cols-2 xl:divide-x xl:divide-slate-200">
-        {/* Users list */}
-        <div className="flex flex-col">
-          <div className="border-b border-slate-200 px-4 py-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">Referrers</h3>
-                <p className="mt-0.5 text-sm text-slate-500">
-                  {loading ? "—" : `${referralUsers.length} users · ${formatCompact(totalReferrals)} total referrals`}
-                </p>
-              </div>
-            </div>
+    <div className="grid gap-6 xl:grid-cols-5">
+      {/* Referrers list */}
+      <div className="flex flex-col overflow-hidden rounded-2xl bg-white shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 xl:col-span-2">
+        <div className="space-y-3 border-b border-slate-200 px-4 py-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold text-slate-900">Top referrers</h3>
+            <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+              {loading ? "—" : `${formatCompact(totalReferrals)} referrals`}
+            </span>
+          </div>
+          <div className="relative">
+            <svg
+              viewBox="0 0 24 24"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 stroke-slate-400"
+              fill="none"
+              strokeWidth="2"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3-3" />
+            </svg>
             <input
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name, email, code…"
-              className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/20"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
             />
-          </div>
-
-          <div className="flex-1 overflow-y-auto">
-            {loading ? (
-              <div className="space-y-2 p-4">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="h-14 animate-pulse rounded-lg bg-slate-100" />
-                ))}
-              </div>
-            ) : filteredUsers.length ? (
-              <ul className="divide-y divide-slate-100">
-                {filteredUsers.map((row) => {
-                  const isSelected = String(row.id) === String(selectedUserId);
-                  return (
-                    <li key={row.id}>
-                      <button
-                        type="button"
-                        onClick={() => onSelectUser(String(row.id))}
-                        className={`flex w-full items-center gap-3 px-4 py-3 text-left transition ${
-                          isSelected
-                            ? "border-l-2 border-indigo-600 bg-indigo-50/80 pl-[14px]"
-                            : "border-l-2 border-transparent hover:bg-slate-50"
-                        }`}
-                      >
-                        <UserAvatar name={row.name} />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-slate-900">{row.name}</p>
-                          <p className="truncate text-xs text-slate-400">
-                            {row.email !== "—" ? row.email : `#${row.id}`}
-                          </p>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <p className="text-sm font-semibold tabular-nums text-slate-900">
-                            {formatCompact(row.referralCount)}
-                          </p>
-                          <p className="text-[11px] text-slate-400">referrals</p>
-                        </div>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <div className="p-6">
-                <EmptyPanel title={search ? "No matches" : "No referral users"} />
-              </div>
-            )}
           </div>
         </div>
 
-        {/* Tree panel */}
-        <div className="flex flex-col border-t border-slate-200 xl:border-t-0">
-          <div className="border-b border-slate-200 px-4 py-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="text-base font-semibold text-slate-900">Referral tree</h3>
-                {selectedUser ? (
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                    <span className="font-medium text-slate-800">{selectedUser.name}</span>
-                    <span className="text-slate-300">·</span>
-                    <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
+        <div className="max-h-128 flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="space-y-2 p-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-14 animate-pulse rounded-lg bg-slate-100" />
+              ))}
+            </div>
+          ) : filteredUsers.length ? (
+            <ul className="divide-y divide-slate-100">
+              {filteredUsers.map((row) => {
+                const isSelected = String(row.id) === String(selectedUserId);
+                return (
+                  <li key={row.id}>
+                    <button
+                      type="button"
+                      onClick={() => onSelectUser(String(row.id))}
+                      className={`flex w-full items-center gap-3 px-4 py-3 text-left transition ${
+                        isSelected
+                          ? "bg-indigo-50/80 ring-1 ring-inset ring-indigo-200"
+                          : "hover:bg-slate-50"
+                      }`}
+                    >
+                      <RankBadge rank={row.rank} />
+                      <UserAvatar name={row.name} id={row.id} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-900">{row.name}</p>
+                        <p className="truncate text-xs text-slate-400">
+                          {row.email !== "—" ? row.email : `#${row.id}`}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-base font-bold tabular-nums text-slate-900">
+                          {formatCompact(row.referralCount)}
+                        </p>
+                        <p className="text-[10px] uppercase tracking-wide text-slate-400">refs</p>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <div className="p-6">
+              <EmptyPanel title={search ? "No matches" : "No referral users"} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Referral tree */}
+      <div className="flex flex-col overflow-hidden rounded-2xl bg-white shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80 xl:col-span-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-4">
+          <h3 className="text-base font-semibold text-slate-900">Referral tree</h3>
+        </div>
+
+        {/* Selected user hero */}
+        <div className="border-b border-slate-200 bg-linear-to-r from-indigo-50 to-white px-4 py-4">
+          {selectedUser ? (
+            <div className="flex items-center gap-4">
+              <UserAvatar name={selectedUser.name} id={selectedUser.id} size="lg" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-lg font-bold text-slate-900">{selectedUser.name}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span>#{selectedUser.id}</span>
+                  {selectedUser.referralCode && selectedUser.referralCode !== "—" ? (
+                    <code className="rounded bg-white px-1.5 py-0.5 font-medium text-slate-600 ring-1 ring-slate-200">
                       {selectedUser.referralCode}
                     </code>
-                    <span className="text-slate-300">·</span>
-                    <span>{formatCompact(selectedUser.referralCount)} direct</span>
-                  </div>
-                ) : selectedUserId ? (
-                  <p className="mt-1 text-sm text-slate-500">User #{selectedUserId}</p>
-                ) : (
-                  <p className="mt-1 text-sm text-slate-500">Select a referrer on the left</p>
-                )}
-              </div>
-              <form onSubmit={onTreeSearch} className="flex shrink-0 items-center gap-2">
-                <input
-                  type="text"
-                  value={treeUserId}
-                  onChange={(e) => onTreeUserIdChange(e.target.value)}
-                  placeholder="User ID"
-                  className="w-24 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/20"
-                />
-                <button
-                  type="submit"
-                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
-                >
-                  Load
-                </button>
-              </form>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto">
-            {treeError ? (
-              <div className="m-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {treeError}
-              </div>
-            ) : null}
-
-            {treeLoading ? (
-              <div className="space-y-2 p-4">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="h-12 animate-pulse rounded-lg bg-slate-100" />
-                ))}
-              </div>
-            ) : referralTree.length ? (
-              <>
-                <div className="border-b border-slate-100 bg-slate-50/80 px-4 py-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                    {treeMemberCount} {treeMemberCount === 1 ? "member" : "members"} in tree
-                  </p>
+                  ) : null}
                 </div>
-                <ReferralTreeList
-                  nodes={referralTree}
-                  onSelect={onSelectUser}
-                  selectedUserId={selectedUserId}
-                />
-              </>
-            ) : (
-              <div className="flex h-full min-h-48 items-center justify-center p-6">
-                <EmptyPanel
-                  title="No tree loaded"
-                  description="Click a referrer on the left or enter a user ID."
-                />
               </div>
-            )}
-          </div>
+              <div className="flex shrink-0 gap-4 text-center">
+                <div>
+                  <p className="text-xl font-bold text-indigo-600">
+                    {formatCompact(selectedUser.referralCount)}
+                  </p>
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Direct</p>
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-slate-900">
+                    {treeLoading ? "—" : formatCompact(Math.max(0, treeMemberCount - 1))}
+                  </p>
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Network</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">Select a referrer to view their network.</p>
+          )}
+        </div>
+
+        <div className="max-h-104 flex-1 overflow-y-auto">
+          {treeError ? (
+            <div className="m-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {treeError}
+            </div>
+          ) : null}
+
+          {treeLoading ? (
+            <div className="space-y-2 p-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-12 animate-pulse rounded-lg bg-slate-100" />
+              ))}
+            </div>
+          ) : referralTree.length ? (
+            <ReferralTreeList
+              nodes={referralTree}
+              onSelect={onSelectUser}
+              selectedUserId={selectedUserId}
+            />
+          ) : (
+            <div className="flex h-full min-h-48 items-center justify-center p-6">
+              <EmptyPanel
+                title="No tree loaded"
+                description="Click a referrer or enter a user ID above."
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
