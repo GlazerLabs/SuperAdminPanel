@@ -921,7 +921,7 @@ export default function LeadDetailPage() {
             {latest?.next_action || lead.next_step || "—"}
           </p>
           <p className="mt-3 text-sm text-slate-500">Next contact</p>
-          <p className="text-sm font-medium text-slate-800 sm:text-base">{sliceDate(lead.next_follow_up_date) || "—"}</p>
+          <p className="text-sm font-medium text-slate-800 sm:text-base">{sliceDate(latest?.next_follow_up_date || lead.next_follow_up_date) || "—"}</p>
         </div>
         <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md sm:p-7 xl:col-span-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Dates</p>
