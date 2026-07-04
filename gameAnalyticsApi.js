@@ -1,25 +1,29 @@
 "use client";
 
-// Game list is still static (no list endpoint wired yet). Names/ids come from
-// the custom-games API response. Analytics are fetched live from the tracking
-// service via the /api/tracking/game-stats proxy (keeps the X-API-Key secret).
-//
-// To wire the games list later, replace fetchGamesList with a getApi() call.
+import { getApi } from "@/api";
 
-const MOCK_GAMES = [
-  { id: 3, name: "2048 Merge" },
-  { id: 12, name: "Solitaire Royale" },
-  { id: 11, name: "Carrom Blitz" },
-  { id: 9, name: "Chess Mate" },
-  { id: 5, name: "AIRCRAFT CONTROL" },
-  // { id: 3, name: "2048 Merge" },
-  { id: 10, name: "THRYL LUDO" },
-  { id: 6, name: "Snake Arena" },
-  { id: 7, name: "Space Trails" },
-  { id: 4, name: "Sport Quest" },
-  { id: 2, name: "Emoji Crush" },
-  { id: 1, name: "Bubble Shooter" },
-];
+// Games list from custom-game/read-all. Analytics are fetched live from the
+// tracking service via the /api/tracking/game-stats proxy (keeps the X-API-Key secret).
+
+const extractGamesList = (json) => {
+  if (Array.isArray(json)) return json;
+  const data = json?.result?.data ?? json?.data ?? json?.result ?? json?.payload;
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === "object") {
+    if (Array.isArray(data.list)) return data.list;
+    if (Array.isArray(data.rows)) return data.rows;
+    if (Array.isArray(data.items)) return data.items;
+    if (Array.isArray(data.games)) return data.games;
+  }
+  return [];
+};
+
+const normalizeGameRow = (row) => {
+  const id = row?.id ?? row?.game_id;
+  const name = String(row?.game_name ?? row?.name ?? "").trim();
+  if (id === undefined || id === null || !name) return null;
+  return { id, name };
+};
 
 const pickNum = (...vals) => {
   for (const v of vals) {
@@ -40,7 +44,18 @@ const formatDayLabel = (dateKey) => {
  * Returns the list of games used to populate the page dropdown.
  */
 export const fetchGamesList = async () => {
-  return MOCK_GAMES;
+  const response = await getApi("custom-game/read-all", {
+    page: 1,
+    limit: 100,
+    // is_featured: 1,
+  });
+
+  if (response?.status === 0) {
+    const err = response?.message || response?.data?.error || "Failed to load games";
+    throw new Error(typeof err === "string" ? err : "Failed to load games");
+  }
+
+  return extractGamesList(response).map(normalizeGameRow).filter(Boolean);
 };
 
 /**
