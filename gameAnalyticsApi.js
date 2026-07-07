@@ -40,6 +40,70 @@ const formatDayLabel = (dateKey) => {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
 
+const formatTimeSlotLabel = (startHour, endHour) => {
+  const end = endHour >= 24 ? 24 : endHour;
+  return `${startHour}–${end}`;
+};
+
+const pad2 = (n) => String(n).padStart(2, "0");
+
+const toDateTimeParam = (dateKey, hour) => `${dateKey}T${pad2(hour)}:00:00`;
+
+const nextDateKey = (dateKey) => {
+  const d = new Date(`${dateKey}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
+
+const buildSlotDatetimeRange = (dateKey, startHour, intervalHours) => {
+  const from = toDateTimeParam(dateKey, startHour);
+  const endHour = startHour + intervalHours;
+  const to = endHour >= 24 ? `${nextDateKey(dateKey)}T00:00:00` : toDateTimeParam(dateKey, endHour);
+  return { from, to };
+};
+
+const buildEmptyTimeSlots = (intervalHours) => {
+  const slots = [];
+  for (let startHour = 0; startHour < 24; startHour += intervalHours) {
+    const endHour = startHour + intervalHours;
+    slots.push({
+      startHour,
+      endHour,
+      label: formatTimeSlotLabel(startHour, endHour),
+      users: 0,
+      plays: 0,
+      durationMinutes: 0,
+    });
+  }
+  return slots;
+};
+
+const fetchGameStatsPayload = async ({ gameName, from, to }) => {
+  const params = new URLSearchParams({
+    eventName: `GAME_PLAYED_${gameName}`,
+    from,
+    to,
+  });
+
+  const response = await fetch(`/api/tracking/game-stats?${params.toString()}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.error || "Failed to load game analytics");
+  }
+
+  return payload;
+};
+
 /**
  * Returns the list of games used to populate the page dropdown.
  */
@@ -68,27 +132,11 @@ export const fetchGamesList = async () => {
 export const fetchGameAnalytics = async ({ gameName, startDate, endDate }) => {
   if (!gameName) throw new Error("Game is required");
 
-  const params = new URLSearchParams({
-    eventName: `GAME_PLAYED_${gameName}`,
+  const payload = await fetchGameStatsPayload({
+    gameName,
     from: startDate,
     to: endDate,
   });
-
-  const response = await fetch(`/api/tracking/game-stats?${params.toString()}`, {
-    method: "GET",
-    cache: "no-store",
-  });
-
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
-
-  if (!response.ok || payload?.ok === false) {
-    throw new Error(payload?.error || "Failed to load game analytics");
-  }
 
   const range = payload?.range && typeof payload.range === "object" ? payload.range : null;
   const rangeOverall =
@@ -133,6 +181,58 @@ export const fetchGameAnalytics = async ({ gameName, startDate, endDate }) => {
       : null,
     timeline,
     raw: payload,
+  };
+};
+
+/**
+ * Fetch time-bucket analytics for a single day.
+ * Each slot is fetched with datetime from/to (e.g. 2026-07-01T00:00:00 → 2026-07-01T02:00:00).
+ * @param {Object} params
+ * @param {string} params.gameName
+ * @param {string} params.date - YYYY-MM-DD
+ * @param {number} params.intervalHours - bucket size in hours (default 3)
+ */
+export const fetchGameTimeAnalytics = async ({ gameName, date, intervalHours = 3 }) => {
+  if (!gameName) throw new Error("Game is required");
+  if (!date) throw new Error("Date is required");
+
+  const hours = Number(intervalHours);
+  const safeInterval = Number.isFinite(hours) && hours > 0 ? hours : 3;
+  const slotDefs = buildEmptyTimeSlots(safeInterval);
+
+  const timeline = await Promise.all(
+    slotDefs.map(async (slot) => {
+      const { from, to } = buildSlotDatetimeRange(date, slot.startHour, safeInterval);
+      const payload = await fetchGameStatsPayload({ gameName, from, to });
+      const rangeOverall =
+        payload?.range?.overall && typeof payload.range.overall === "object"
+          ? payload.range.overall
+          : payload?.overall && typeof payload.overall === "object"
+            ? payload.overall
+            : payload;
+
+      return {
+        ...slot,
+        from,
+        to,
+        users: pickNum(rangeOverall?.uniqueUsers),
+        plays: pickNum(rangeOverall?.totalPlays),
+        durationMinutes: pickNum(rangeOverall?.totalDurationMinutes),
+      };
+    })
+  );
+
+  const totalPlays = timeline.reduce((sum, row) => sum + row.plays, 0);
+  const totalDurationMinutes = timeline.reduce((sum, row) => sum + row.durationMinutes, 0);
+
+  return {
+    gameName,
+    date,
+    intervalHours: safeInterval,
+    totalPlays,
+    totalDurationMinutes,
+    avgDurationMinutes: totalPlays > 0 ? totalDurationMinutes / totalPlays : 0,
+    timeline,
   };
 };
 

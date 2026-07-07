@@ -15,6 +15,7 @@ import {
 import ApprovalsPanel from "@/components/kpi-analytics/ApprovalsPanel";
 import KpiPerformanceTable from "@/components/kpi-analytics/KpiPerformanceTable";
 import KpiReferralPanel from "@/components/kpi-analytics/KpiReferralPanel";
+import LoginStreakClaimUsersPanel from "@/components/kpi-analytics/LoginStreakClaimUsersPanel";
 import {
   ChangeBadge,
   EmptyPanel,
@@ -364,6 +365,8 @@ export default function KpiAnalyticsPage() {
             treeLoading={treeLoading}
             treeError={treeError}
           />
+
+          <LoginStreakClaimUsersPanel />
         </div>
       ) : null}
     </main>

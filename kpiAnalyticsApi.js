@@ -351,6 +351,50 @@ export const fetchLoginStreakRewards = async () => {
   return { rows, raw: response };
 };
 
+const normalizeLoginStreakClaimUserRow = (row) => ({
+  id: row?.id,
+  username: String(row?.username ?? "—"),
+  name: String(row?.full_name ?? row?.fullName ?? row?.username ?? "—"),
+  mobile: String(row?.mobile ?? "—"),
+  email: row?.email ? String(row.email) : "—",
+  profilePicUrl: row?.profile_pic_url ?? row?.profilePicUrl ?? null,
+  totalClaimDays: pickNum(row?.total_claim_days, row?.totalClaimDays) ?? 0,
+  normalClaims: pickNum(row?.normal_claims, row?.normalClaims) ?? 0,
+  adClaims: pickNum(row?.ad_claims, row?.adClaims) ?? 0,
+  normalToken: pickNum(row?.normal_token, row?.normalToken) ?? 0,
+  adToken: pickNum(row?.ad_token, row?.adToken) ?? 0,
+  totalToken: pickNum(row?.total_token, row?.totalToken) ?? 0,
+  lastClaimAt: row?.last_claim_at ?? row?.lastClaimAt ?? null,
+  lastClaimType: String(row?.last_claim_type ?? row?.lastClaimType ?? "—"),
+  raw: row,
+});
+
+export const fetchLoginStreakClaimUsers = async ({ page = 1, limit = 20 } = {}) => {
+  const response = await getApi("login-streak/admin/claim-users", { page, limit });
+
+  if (response?.status === 0) {
+    const err =
+      response?.message || response?.data?.error || "Failed to load login streak claim users";
+    throw new Error(typeof err === "string" ? err : "Failed to load login streak claim users");
+  }
+
+  const data = response?.data;
+  const rows = pickArray(Array.isArray(data) ? data : null).map(normalizeLoginStreakClaimUserRow);
+
+  const total = pickNum(response?.total, rows[0]?.raw?.total_count) ?? rows.length;
+  const resolvedLimit = pickNum(response?.limit) ?? limit;
+  const totalPages = Math.max(1, Math.ceil(total / resolvedLimit));
+
+  return {
+    rows,
+    total,
+    totalPages,
+    page: pickNum(response?.page) ?? page,
+    limit: resolvedLimit,
+    raw: response,
+  };
+};
+
 export const updateLoginStreakRewardStatus = async (ids, status) => {
   const idList = (Array.isArray(ids) ? ids : [ids]).filter((id) => id != null && id !== "");
   if (!idList.length) {

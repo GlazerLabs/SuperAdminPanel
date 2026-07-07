@@ -13,17 +13,19 @@ import {
   YAxis,
 } from "recharts";
 import { EmptyPanel, SectionCard, ShimmerCard } from "@/components/kpi-analytics/KpiSection";
-import { fetchGameAnalytics, fetchGamesList } from "@/gameAnalyticsApi";
+import { fetchGameAnalytics, fetchGameTimeAnalytics, fetchGamesList } from "@/gameAnalyticsApi";
 
 const INDIGO = "#4f46e5";
 const VIOLET = "#7c3aed";
 const EMERALD = "#059669";
 const tickStyle = { fontSize: 13, fill: "#64748b", fontWeight: 500 };
+const INTERVAL_OPTIONS = [1, 2, 3, 4, 6];
+const DEFAULT_INTERVAL_HOURS = 3;
 
 const ALL_TIME_CARDS = [
   {
     key: "totalPlays",
-    label: "Total Players",
+    label: "Total Plays",
     hint: "All time",
     format: "count",
   },
@@ -44,7 +46,7 @@ const SUMMARY_CARDS = [
   },
   {
     key: "totalPlays",
-    label: "Total Players",
+    label: "Total Plays",
     hint: "Within selected range",
     format: "count",
   },
@@ -101,6 +103,13 @@ function formatAxisValue(v) {
   return v >= 1000 ? `${v / 1000}K` : String(v);
 }
 
+function formatDrillDownDate(dateKey) {
+  if (!dateKey) return "—";
+  const d = new Date(`${dateKey}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return dateKey;
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+}
+
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
@@ -130,6 +139,11 @@ export default function GameAnalyticsPage() {
   const [gamesLoading, setGamesLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const [drillDownDate, setDrillDownDate] = useState(null);
+  const [intervalHours, setIntervalHours] = useState(DEFAULT_INTERVAL_HOURS);
+  const [timeAnalytics, setTimeAnalytics] = useState(null);
+  const [timeLoading, setTimeLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,11 +188,43 @@ export default function GameAnalyticsPage() {
 
   useEffect(() => {
     loadAnalytics();
+    setDrillDownDate(null);
+    setTimeAnalytics(null);
   }, [loadAnalytics]);
 
-  const chartData = useMemo(
+  const selectedGame = games.find((g) => String(g.id) === String(selectedGameId));
+
+  const loadTimeAnalytics = useCallback(async () => {
+    if (!drillDownDate || !selectedGame) return;
+    setTimeLoading(true);
+    setError("");
+    try {
+      const data = await fetchGameTimeAnalytics({
+        gameName: selectedGame.name,
+        date: drillDownDate,
+        intervalHours,
+      });
+      setTimeAnalytics(data);
+    } catch (err) {
+      setError(err?.message || "Failed to load time analytics");
+      setTimeAnalytics(null);
+    } finally {
+      setTimeLoading(false);
+    }
+  }, [drillDownDate, selectedGame, intervalHours]);
+
+  useEffect(() => {
+    if (!drillDownDate) {
+      setTimeAnalytics(null);
+      return;
+    }
+    loadTimeAnalytics();
+  }, [drillDownDate, loadTimeAnalytics]);
+
+  const dailyChartData = useMemo(
     () =>
       (analytics?.timeline || []).map((row) => ({
+        date: row.date,
         label: row.label,
         users: row.users,
         plays: row.plays,
@@ -187,20 +233,76 @@ export default function GameAnalyticsPage() {
     [analytics?.timeline]
   );
 
+  const timeChartData = useMemo(
+    () =>
+      (timeAnalytics?.timeline || []).map((row) => ({
+        label: row.label,
+        users: row.users,
+        plays: row.plays,
+        durationMinutes: row.durationMinutes,
+      })),
+    [timeAnalytics?.timeline]
+  );
+
+  const chartData = drillDownDate ? timeChartData : dailyChartData;
+  const isDrillDown = Boolean(drillDownDate);
+
   const isLoading = gamesLoading || loading;
-  const selectedGame = games.find((g) => String(g.id) === String(selectedGameId));
+  const chartLoading = isLoading || (isDrillDown && timeLoading);
+
+  const handleDailyChartClick = useCallback(
+    (state) => {
+      if (isDrillDown || chartLoading) return;
+      const label = state?.activeLabel;
+      if (!label) return;
+      const row = dailyChartData.find((item) => item.label === label);
+      if (row?.date) setDrillDownDate(row.date);
+    },
+    [isDrillDown, chartLoading, dailyChartData]
+  );
+
+  const handleDateLabelClick = useCallback(
+    (label) => {
+      if (isDrillDown || chartLoading) return;
+      const row = dailyChartData.find((item) => item.label === label);
+      if (row?.date) setDrillDownDate(row.date);
+    },
+    [isDrillDown, chartLoading, dailyChartData]
+  );
+
+  const renderDailyTick = useCallback(
+    ({ x, y, payload }) => (
+      <g transform={`translate(${x},${y})`}>
+        <text
+          x={0}
+          y={0}
+          dy={16}
+          textAnchor="middle"
+          fill="#64748b"
+          fontSize={13}
+          fontWeight={500}
+          style={{ cursor: "pointer" }}
+          onClick={() => handleDateLabelClick(payload.value)}
+        >
+          {payload.value}
+        </text>
+      </g>
+    ),
+    [handleDateLabelClick]
+  );
 
   const handleExportCsv = useCallback(() => {
-    const rows = analytics?.timeline || [];
+    const rows = isDrillDown ? timeAnalytics?.timeline || [] : analytics?.timeline || [];
     if (!rows.length) return;
 
-    const header = ["Date", "Unique Users", "Total Players", "Played Minutes"];
-    const lines = rows.map((row) => [
-      row.date,
-      row.users,
-      row.plays,
-      row.durationMinutes,
-    ]);
+    const header = isDrillDown
+      ? ["Time slot", "Unique Users", "Total Players", "Played Minutes"]
+      : ["Date", "Unique Users", "Total Players", "Played Minutes"];
+    const lines = rows.map((row) =>
+      isDrillDown
+        ? [row.label, row.users, row.plays, row.durationMinutes]
+        : [row.date, row.users, row.plays, row.durationMinutes]
+    );
 
     const csv = [header, ...lines]
       .map((cols) => cols.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(","))
@@ -211,12 +313,23 @@ export default function GameAnalyticsPage() {
     const link = document.createElement("a");
     const gameSlug = (selectedGame?.name || "game").replace(/\s+/g, "_").toLowerCase();
     link.href = url;
-    link.download = `game-analytics_${gameSlug}_${startDate}_to_${endDate}.csv`;
+    link.download = isDrillDown
+      ? `game-analytics_${gameSlug}_${drillDownDate}_${intervalHours}h.csv`
+      : `game-analytics_${gameSlug}_${startDate}_to_${endDate}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [analytics?.timeline, selectedGame?.name, startDate, endDate]);
+  }, [
+    analytics?.timeline,
+    timeAnalytics?.timeline,
+    selectedGame?.name,
+    startDate,
+    endDate,
+    drillDownDate,
+    intervalHours,
+    isDrillDown,
+  ]);
 
   return (
     <main className="space-y-6">
@@ -318,30 +431,77 @@ export default function GameAnalyticsPage() {
       </section>
 
       <SectionCard
-        title="Total Players vs. Unique Users vs. Time Played"
-        subtitle="Daily total players, unique users, and total minutes played for the selected range."
+        title={
+          isDrillDown
+            ? `Hourly breakdown — ${formatDrillDownDate(drillDownDate)}`
+            : "Total Players vs. Unique Users vs. Time Played"
+        }
+        subtitle={
+          isDrillDown
+            ? `${intervalHours}-hour time slots for the selected day. Change the interval or go back to the daily view.`
+            : "Daily total players, unique users, and total minutes played. Click a date to drill down."
+        }
         action={
-          <button
-            type="button"
-            onClick={handleExportCsv}
-            disabled={isLoading || !chartData.length}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <svg viewBox="0 0 24 24" className="h-4 w-4 stroke-2 stroke-slate-500" fill="none" aria-hidden="true">
-              <path d="M12 4v10" />
-              <path d="M8.5 10.5 12 14l3.5-3.5" />
-              <path d="M5 19h14" />
-            </svg>
-            Export CSV
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {isDrillDown ? (
+              <>
+                <label className="flex items-center gap-2">
+                  <span className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                    Interval
+                  </span>
+                  <select
+                    value={intervalHours}
+                    onChange={(e) => setIntervalHours(Number(e.target.value))}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  >
+                    {INTERVAL_OPTIONS.map((hours) => (
+                      <option key={hours} value={hours}>
+                        {hours} hr{hours === 1 ? "" : "s"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDrillDownDate(null);
+                    setTimeAnalytics(null);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 stroke-2 stroke-slate-500" fill="none" aria-hidden="true">
+                    <path d="M15 18l-6-6 6-6" />
+                  </svg>
+                  Daily view
+                </button>
+              </>
+            ) : null}
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              disabled={chartLoading || !chartData.length}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4 stroke-2 stroke-slate-500" fill="none" aria-hidden="true">
+                <path d="M12 4v10" />
+                <path d="M8.5 10.5 12 14l3.5-3.5" />
+                <path d="M5 19h14" />
+              </svg>
+              Export CSV
+            </button>
+          </div>
         }
       >
-        {isLoading ? (
+        {chartLoading ? (
           <div className="h-72 animate-pulse rounded-xl bg-slate-100" />
         ) : chartData.length ? (
-          <div className="h-72">
+          <div className={`h-72 ${!isDrillDown ? "cursor-pointer" : ""}`}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 10, right: 8, left: 0, bottom: 4 }}>
+              <ComposedChart
+                data={chartData}
+                margin={{ top: 10, right: 8, left: 0, bottom: 4 }}
+                onClick={!isDrillDown ? handleDailyChartClick : undefined}
+              >
                 <defs>
                   <linearGradient id="usersFill" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={INDIGO} stopOpacity={0.25} />
@@ -349,7 +509,17 @@ export default function GameAnalyticsPage() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="#eef2ff" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} tick={tickStyle} />
+                <XAxis
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  tick={isDrillDown ? tickStyle : renderDailyTick}
+                  interval={isDrillDown ? 0 : "preserveStartEnd"}
+                  angle={isDrillDown ? -35 : 0}
+                  textAnchor={isDrillDown ? "end" : "middle"}
+                  height={isDrillDown ? 56 : 30}
+                />
                 <YAxis
                   yAxisId="left"
                   tickLine={false}
@@ -390,7 +560,7 @@ export default function GameAnalyticsPage() {
                   dataKey="plays"
                   stroke={VIOLET}
                   strokeWidth={2}
-                  dot={false}
+                  dot={isDrillDown}
                   name="Total players"
                 />
                 <Line
@@ -399,14 +569,21 @@ export default function GameAnalyticsPage() {
                   dataKey="durationMinutes"
                   stroke={EMERALD}
                   strokeWidth={2}
-                  dot={false}
+                  dot={isDrillDown}
                   name="Time played (min)"
                 />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
         ) : (
-          <EmptyPanel title="No data" description="No activity for the selected game and range." />
+          <EmptyPanel
+            title="No data"
+            description={
+              isDrillDown
+                ? "No activity for the selected day and time interval."
+                : "No activity for the selected game and range."
+            }
+          />
         )}
       </SectionCard>
     </main>
@@ -447,7 +624,7 @@ export default function GameAnalyticsPage() {
 //   },
 //   {
 //     key: "totalPlays",
-//     label: "Total Players",
+//     label: "Total Plays",
 //     hint: "Within selected range",
 //     format: "count",
 //   },
