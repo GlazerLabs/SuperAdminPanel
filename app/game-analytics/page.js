@@ -177,7 +177,13 @@ export default function GameAnalyticsPage() {
         startDate,
         endDate,
       });
-      setAnalytics(data);
+      setAnalytics({
+        ...data,
+        allTime: {
+          ...(data?.allTime || {}),
+          totalPlays: Number(game?.totalUsers) || 0,
+        },
+      });
     } catch (err) {
       setError(err?.message || "Failed to load game analytics");
       setAnalytics(null);

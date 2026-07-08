@@ -22,7 +22,11 @@ const normalizeGameRow = (row) => {
   const id = row?.id ?? row?.game_id;
   const name = String(row?.game_name ?? row?.name ?? "").trim();
   if (id === undefined || id === null || !name) return null;
-  return { id, name };
+  return {
+    id,
+    name,
+    totalUsers: pickNum(row?.total_users, row?.totalUsers),
+  };
 };
 
 const pickNum = (...vals) => {
