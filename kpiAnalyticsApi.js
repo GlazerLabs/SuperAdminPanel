@@ -391,6 +391,8 @@ export const fetchLoginStreakClaimUsers = async ({ page = 1, limit = 20 } = {}) 
     totalPages,
     page: pickNum(response?.page) ?? page,
     limit: resolvedLimit,
+    normalTotalToken: pickNum(response?.normal_total_token, response?.normalTotalToken) ?? 0,
+    adTotalToken: pickNum(response?.ad_total_token, response?.adTotalToken) ?? 0,
     raw: response,
   };
 };

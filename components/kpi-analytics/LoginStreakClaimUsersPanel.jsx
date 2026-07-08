@@ -1,8 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { EmptyPanel } from "@/components/kpi-analytics/KpiSection";
+import { EmptyPanel, ShimmerCard } from "@/components/kpi-analytics/KpiSection";
 import { fetchLoginStreakClaimUsers } from "@/kpiAnalyticsApi";
+
+const SUMMARY_CARDS = [
+  { label: "Total users", key: "totalUsers", tone: "bg-indigo-500/10" },
+  { label: "Normal token", key: "normalTotalToken", tone: "bg-sky-500/10" },
+  { label: "Ad token", key: "adTotalToken", tone: "bg-violet-500/10" },
+];
 
 const ENTRIES_OPTIONS = [10, 20, 50];
 
@@ -86,6 +92,8 @@ export default function LoginStreakClaimUsersPanel() {
   const [limit, setLimit] = useState(20);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [normalTotalToken, setNormalTotalToken] = useState(0);
+  const [adTotalToken, setAdTotalToken] = useState(0);
 
   const loadRows = useCallback(async () => {
     setLoading(true);
@@ -95,10 +103,14 @@ export default function LoginStreakClaimUsersPanel() {
       setRows(result.rows);
       setTotal(result.total);
       setTotalPages(result.totalPages);
+      setNormalTotalToken(result.normalTotalToken);
+      setAdTotalToken(result.adTotalToken);
     } catch (err) {
       setRows([]);
       setTotal(0);
       setTotalPages(1);
+      setNormalTotalToken(0);
+      setAdTotalToken(0);
       setError(err?.message || err?.error || "Failed to load login streak data");
     } finally {
       setLoading(false);
@@ -168,6 +180,12 @@ export default function LoginStreakClaimUsersPanel() {
     }
   };
 
+  const summaryValues = {
+    totalUsers: total,
+    normalTotalToken,
+    adTotalToken,
+  };
+
   return (
     <section className="overflow-hidden rounded-2xl bg-white shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80">
       <div className="space-y-3 border-b border-slate-200 px-4 py-4">
@@ -211,6 +229,27 @@ export default function LoginStreakClaimUsersPanel() {
             className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
+      </div>
+
+      <div className="grid gap-4 border-b border-slate-200 px-4 py-4 sm:grid-cols-3">
+        {loading
+          ? SUMMARY_CARDS.map((card) => <ShimmerCard key={card.key} />)
+          : SUMMARY_CARDS.map((card) => (
+              <div
+                key={card.key}
+                className="relative overflow-hidden rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200/80"
+              >
+                <div
+                  className={`absolute right-0 top-0 h-16 w-16 translate-x-3 -translate-y-3 rounded-full ${card.tone}`}
+                />
+                <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                  {card.label}
+                </p>
+                <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
+                  {formatNum(summaryValues[card.key])}
+                </p>
+              </div>
+            ))}
       </div>
 
       {error ? (
