@@ -8,6 +8,7 @@ const SUMMARY_CARDS = [
   { label: "Total users", key: "totalUsers", tone: "bg-indigo-500/10" },
   { label: "Normal token", key: "normalTotalToken", tone: "bg-sky-500/10" },
   { label: "Ad token", key: "adTotalToken", tone: "bg-violet-500/10" },
+  { label: "Total token", key: "combinedTotalToken", tone: "bg-emerald-500/10" },
 ];
 
 const ENTRIES_OPTIONS = [10, 20, 50];
@@ -184,6 +185,7 @@ export default function LoginStreakClaimUsersPanel() {
     totalUsers: total,
     normalTotalToken,
     adTotalToken,
+    combinedTotalToken: normalTotalToken + adTotalToken,
   };
 
   return (
@@ -231,7 +233,7 @@ export default function LoginStreakClaimUsersPanel() {
         </div>
       </div>
 
-      <div className="grid gap-4 border-b border-slate-200 px-4 py-4 sm:grid-cols-3">
+      <div className="grid gap-4 border-b border-slate-200 px-4 py-4 sm:grid-cols-2 lg:grid-cols-4">
         {loading
           ? SUMMARY_CARDS.map((card) => <ShimmerCard key={card.key} />)
           : SUMMARY_CARDS.map((card) => (
