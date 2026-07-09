@@ -150,10 +150,14 @@ export default function GameAnalyticsPage() {
     (async () => {
       setGamesLoading(true);
       try {
-        const list = await fetchGamesList();
+        const list = await fetchGamesList({ startDate, endDate });
         if (cancelled) return;
         setGames(list);
-        setSelectedGameId((current) => current || list[0]?.id || "");
+        setSelectedGameId((current) => {
+          if (!current) return list[0]?.id || "";
+          const stillExists = list.some((game) => String(game.id) === String(current));
+          return stillExists ? current : list[0]?.id || "";
+        });
       } catch (err) {
         if (!cancelled) setError(err?.message || "Failed to load games");
       } finally {
@@ -163,7 +167,7 @@ export default function GameAnalyticsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [startDate, endDate]);
 
   const loadAnalytics = useCallback(async () => {
     if (!selectedGameId) return;
@@ -179,6 +183,7 @@ export default function GameAnalyticsPage() {
       });
       setAnalytics({
         ...data,
+        totalPlays: Number(game?.countUserCustom) || 0,
         allTime: {
           ...(data?.allTime || {}),
           totalPlays: Number(game?.totalUsers) || 0,

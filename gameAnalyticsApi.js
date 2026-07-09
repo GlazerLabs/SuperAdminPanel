@@ -26,6 +26,7 @@ const normalizeGameRow = (row) => {
     id,
     name,
     totalUsers: pickNum(row?.total_users, row?.totalUsers),
+    countUserCustom: pickNum(row?.count_user_custom, row?.countUserCustom),
   };
 };
 
@@ -111,10 +112,12 @@ const fetchGameStatsPayload = async ({ gameName, from, to }) => {
 /**
  * Returns the list of games used to populate the page dropdown.
  */
-export const fetchGamesList = async () => {
+export const fetchGamesList = async ({ startDate, endDate } = {}) => {
   const response = await getApi("custom-game/read-all", {
     page: 1,
     limit: 100,
+    ...(startDate ? { start_date: startDate } : {}),
+    ...(endDate ? { end_date: endDate } : {}),
     // is_featured: 1,
   });
 
