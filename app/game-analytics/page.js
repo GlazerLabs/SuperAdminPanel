@@ -307,8 +307,8 @@ export default function GameAnalyticsPage() {
     if (!rows.length) return;
 
     const header = isDrillDown
-      ? ["Time slot", "Unique Users", "Total Players", "Played Minutes"]
-      : ["Date", "Unique Users", "Total Players", "Played Minutes"];
+      ? ["Time slot", "Unique Users", "Total Plays", "Played Minutes"]
+      : ["Date", "Unique Users", "Total Plays", "Played Minutes"];
     const lines = rows.map((row) =>
       isDrillDown
         ? [row.label, row.users, row.plays, row.durationMinutes]
@@ -445,12 +445,12 @@ export default function GameAnalyticsPage() {
         title={
           isDrillDown
             ? `Hourly breakdown — ${formatDrillDownDate(drillDownDate)}`
-            : "Total Players vs. Unique Users vs. Time Played"
+            : "Total Plays vs. Unique Users vs. Time Played"
         }
         subtitle={
           isDrillDown
             ? `${intervalHours}-hour time slots for the selected day. Change the interval or go back to the daily view.`
-            : "Daily total players, unique users, and total minutes played. Click a date to drill down."
+            : "Daily total plays, unique users, and total minutes played. Click a date to drill down."
         }
         action={
           <div className="flex flex-wrap items-center gap-2">
@@ -572,7 +572,7 @@ export default function GameAnalyticsPage() {
                   stroke={VIOLET}
                   strokeWidth={2}
                   dot={isDrillDown}
-                  name="Total players"
+                  name="Total plays"
                 />
                 <Line
                   yAxisId="right"
