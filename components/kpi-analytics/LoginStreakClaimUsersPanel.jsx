@@ -9,7 +9,10 @@ const SUMMARY_CARDS = [
   { label: "Normal token", key: "normalTotalToken", tone: "bg-sky-500/10" },
   { label: "Ad token", key: "adTotalToken", tone: "bg-violet-500/10" },
   { label: "Total token", key: "combinedTotalToken", tone: "bg-emerald-500/10" },
+  { label: "Revenue", key: "revenue", tone: "bg-amber-500/10", format: "currency" },
 ];
+
+const ADMOB_REVENUE_START_DATE = "2026-07-04";
 
 const ENTRIES_OPTIONS = [10, 20, 50];
 
@@ -46,6 +49,29 @@ function formatNum(value) {
   const num = Number(value);
   if (!Number.isFinite(num)) return "—";
   return num.toLocaleString();
+}
+
+function formatCurrency(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "—";
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(num);
+}
+
+function formatSummaryValue(value, format) {
+  if (format === "currency") return formatCurrency(value);
+  return formatNum(value);
+}
+
+function todayYmd() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function claimTypeBadgeClass(type) {
@@ -95,6 +121,8 @@ export default function LoginStreakClaimUsersPanel() {
   const [totalPages, setTotalPages] = useState(1);
   const [normalTotalToken, setNormalTotalToken] = useState(0);
   const [adTotalToken, setAdTotalToken] = useState(0);
+  const [revenue, setRevenue] = useState(null);
+  const [revenueLoading, setRevenueLoading] = useState(true);
 
   const loadRows = useCallback(async () => {
     setLoading(true);
@@ -118,9 +146,32 @@ export default function LoginStreakClaimUsersPanel() {
     }
   }, [page, limit]);
 
+  const loadRevenue = useCallback(async () => {
+    setRevenueLoading(true);
+    try {
+      const endDate = todayYmd();
+      const res = await fetch(
+        `/api/analytics?startDate=${ADMOB_REVENUE_START_DATE}&endDate=${endDate}`
+      );
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || "Failed to load AdMob revenue");
+      }
+      setRevenue(Number(json?.kpis?.estimatedEarnings ?? 0));
+    } catch {
+      setRevenue(null);
+    } finally {
+      setRevenueLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadRows();
   }, [loadRows]);
+
+  useEffect(() => {
+    loadRevenue();
+  }, [loadRevenue]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -186,7 +237,10 @@ export default function LoginStreakClaimUsersPanel() {
     normalTotalToken,
     adTotalToken,
     combinedTotalToken: normalTotalToken + adTotalToken,
+    revenue,
   };
+
+  const summaryLoading = loading || revenueLoading;
 
   return (
     <section className="overflow-hidden rounded-2xl bg-white shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80">
@@ -233,8 +287,8 @@ export default function LoginStreakClaimUsersPanel() {
         </div>
       </div>
 
-      <div className="grid gap-4 border-b border-slate-200 px-4 py-4 sm:grid-cols-2 lg:grid-cols-4">
-        {loading
+      <div className="grid gap-4 border-b border-slate-200 px-4 py-4 sm:grid-cols-2 lg:grid-cols-5">
+        {summaryLoading
           ? SUMMARY_CARDS.map((card) => <ShimmerCard key={card.key} />)
           : SUMMARY_CARDS.map((card) => (
               <div
@@ -248,7 +302,7 @@ export default function LoginStreakClaimUsersPanel() {
                   {card.label}
                 </p>
                 <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
-                  {formatNum(summaryValues[card.key])}
+                  {formatSummaryValue(summaryValues[card.key], card.format)}
                 </p>
               </div>
             ))}

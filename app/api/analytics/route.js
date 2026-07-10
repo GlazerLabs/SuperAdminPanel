@@ -76,7 +76,7 @@ async function getAdMobTotals({ startYmd, endYmd }) {
 
   const reportSpec = {
     date_range: { start_date: startDate, end_date: endDate },
-    metrics: ["AD_REQUESTS", "IMPRESSIONS"],
+    metrics: ["AD_REQUESTS", "IMPRESSIONS", "ESTIMATED_EARNINGS"],
     dimensions: ["DATE"],
     sort_conditions: [{ dimension: "DATE", order: "ASCENDING" }],
     localization_settings: {
@@ -120,15 +120,24 @@ async function getAdMobTotals({ startYmd, endYmd }) {
   const chunks = parseAdMobRowsFromText(reportText);
   let adRequests = 0;
   let adImpressions = 0;
+  let estimatedEarningsMicros = 0;
 
   for (const item of chunks) {
     const row = item?.row;
     if (!row) continue;
     adRequests += Number(row.metricValues?.AD_REQUESTS?.integerValue || 0);
     adImpressions += Number(row.metricValues?.IMPRESSIONS?.integerValue || 0);
+    estimatedEarningsMicros += Number(
+      row.metricValues?.ESTIMATED_EARNINGS?.microsValue || 0
+    );
   }
 
-  return { adRequests, adImpressions };
+  return {
+    adRequests,
+    adImpressions,
+    // AdMob returns earnings in micros (1,000,000 micros = 1 currency unit).
+    estimatedEarnings: estimatedEarningsMicros / 1_000_000,
+  };
 }
 
 function formatGaDate(gaDate) {
@@ -314,6 +323,7 @@ export async function GET(req) {
     });
     const adRequests = adMobTotals.adRequests;
     const adImpressions = adMobTotals.adImpressions;
+    const estimatedEarnings = Number(adMobTotals.estimatedEarnings || 0);
 
     // MAU is always last 28 days (independent of selected filter).
     const [mau28Response] = await analyticsDataClient.runReport({
@@ -446,6 +456,7 @@ export async function GET(req) {
           avgTimeSpentSeconds: avgEngagementSeconds,
           adRequests,
           adImpressions,
+          estimatedEarnings,
         },
         dau: {
           current: currentDau,

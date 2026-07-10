@@ -34,6 +34,8 @@ import {
 
 const PAGE_TABS = [
   { id: "analytics", label: "Analytics" },
+  { id: "top-referrals", label: "Top Referrals" },
+  { id: "login-streak-claims", label: "Login streak Claims" },
   { id: "approvals", label: "Approvals" },
 ];
 
@@ -109,32 +111,27 @@ export default function KpiAnalyticsPage() {
   const [treeUserId, setTreeUserId] = useState("");
 
   const [loading, setLoading] = useState(true);
+  const [referralLoading, setReferralLoading] = useState(false);
   const [treeLoading, setTreeLoading] = useState(false);
   const [error, setError] = useState("");
+  const [referralError, setReferralError] = useState("");
   const [treeError, setTreeError] = useState("");
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [summaryRes, byTypeRes, completionsRes, performanceRes, referralRes] = await Promise.all([
+      const [summaryRes, byTypeRes, completionsRes, performanceRes] = await Promise.all([
         fetchKpiAnalyticsSummary(),
         fetchKpiAnalyticsByType(),
         fetchKpiAnalyticsCompletions(),
         fetchKpiAnalyticsPerformance(),
-        fetchReferralUsers(),
       ]);
 
       setSummary(summaryRes);
       setByType(byTypeRes);
       setCompletions(completionsRes);
       setPerformance(performanceRes);
-      setReferralUsers(referralRes);
-
-      setSelectedUserId((current) => {
-        if (current) return current;
-        return referralRes[0]?.id != null ? String(referralRes[0].id) : "";
-      });
     } catch (err) {
       setError(err?.message || "Failed to load KPI analytics");
     } finally {
@@ -142,10 +139,32 @@ export default function KpiAnalyticsPage() {
     }
   }, []);
 
+  const loadReferralUsers = useCallback(async () => {
+    setReferralLoading(true);
+    setReferralError("");
+    try {
+      const referralRes = await fetchReferralUsers();
+      setReferralUsers(referralRes);
+      setSelectedUserId((current) => {
+        if (current) return current;
+        return referralRes[0]?.id != null ? String(referralRes[0].id) : "";
+      });
+    } catch (err) {
+      setReferralError(err?.message || "Failed to load referral users");
+    } finally {
+      setReferralLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (activeTab !== "analytics") return;
     loadAll();
   }, [loadAll, activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "top-referrals") return;
+    loadReferralUsers();
+  }, [loadReferralUsers, activeTab]);
 
   const loadReferralTree = useCallback(async (userId) => {
     if (!userId) return;
@@ -163,9 +182,9 @@ export default function KpiAnalyticsPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedUserId) return;
+    if (activeTab !== "top-referrals" || !selectedUserId) return;
     loadReferralTree(selectedUserId);
-  }, [selectedUserId, loadReferralTree]);
+  }, [activeTab, selectedUserId, loadReferralTree]);
 
   const completionsChartData = useMemo(
     () =>
@@ -206,6 +225,30 @@ export default function KpiAnalyticsPage() {
       <TabBar tabs={PAGE_TABS} active={activeTab} onChange={setActiveTab} variant="underline" />
 
       {activeTab === "approvals" ? <ApprovalsPanel /> : null}
+
+      {activeTab === "top-referrals" ? (
+        <div className="space-y-6">
+          {referralError ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {referralError}
+            </div>
+          ) : null}
+          <KpiReferralPanel
+            loading={referralLoading}
+            referralUsers={referralUsers}
+            referralTree={referralTree}
+            selectedUserId={selectedUserId}
+            onSelectUser={setSelectedUserId}
+            treeUserId={treeUserId}
+            onTreeUserIdChange={setTreeUserId}
+            onTreeSearch={handleTreeSearch}
+            treeLoading={treeLoading}
+            treeError={treeError}
+          />
+        </div>
+      ) : null}
+
+      {activeTab === "login-streak-claims" ? <LoginStreakClaimUsersPanel /> : null}
 
       {activeTab === "analytics" ? (
         <div className="space-y-6">
@@ -352,21 +395,6 @@ export default function KpiAnalyticsPage() {
               </div>
             )}
           </SectionCard>
-
-          <KpiReferralPanel
-            loading={loading}
-            referralUsers={referralUsers}
-            referralTree={referralTree}
-            selectedUserId={selectedUserId}
-            onSelectUser={setSelectedUserId}
-            treeUserId={treeUserId}
-            onTreeUserIdChange={setTreeUserId}
-            onTreeSearch={handleTreeSearch}
-            treeLoading={treeLoading}
-            treeError={treeError}
-          />
-
-          <LoginStreakClaimUsersPanel />
         </div>
       ) : null}
     </main>
