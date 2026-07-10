@@ -15,6 +15,7 @@ import {
 import ApprovalsPanel from "@/components/kpi-analytics/ApprovalsPanel";
 import KpiPerformanceTable from "@/components/kpi-analytics/KpiPerformanceTable";
 import KpiReferralPanel from "@/components/kpi-analytics/KpiReferralPanel";
+import LeaderboardPanel from "@/components/kpi-analytics/LeaderboardPanel";
 import LoginStreakClaimUsersPanel from "@/components/kpi-analytics/LoginStreakClaimUsersPanel";
 import {
   ChangeBadge,
@@ -36,6 +37,7 @@ const PAGE_TABS = [
   { id: "analytics", label: "Analytics" },
   { id: "top-referrals", label: "Top Referrals" },
   { id: "login-streak-claims", label: "Login streak Claims" },
+  { id: "leaderboard", label: "Leaderboard" },
   { id: "approvals", label: "Approvals" },
 ];
 
@@ -249,6 +251,8 @@ export default function KpiAnalyticsPage() {
       ) : null}
 
       {activeTab === "login-streak-claims" ? <LoginStreakClaimUsersPanel /> : null}
+
+      {activeTab === "leaderboard" ? <LeaderboardPanel /> : null}
 
       {activeTab === "analytics" ? (
         <div className="space-y-6">

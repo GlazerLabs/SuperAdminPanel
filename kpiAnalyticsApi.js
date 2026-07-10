@@ -397,6 +397,72 @@ export const fetchLoginStreakClaimUsers = async ({ page = 1, limit = 20 } = {}) 
   };
 };
 
+const normalizeLeaderboardWinnerRow = (row, index) => ({
+  rank: pickNum(row?.rank) ?? index + 1,
+  id: row?.user_id ?? row?.userId ?? row?.id,
+  username: String(row?.username ?? "—"),
+  name: String(row?.full_name ?? row?.fullName ?? row?.username ?? "—"),
+  gameId: row?.game_id ?? row?.gameId ?? null,
+  gameName: String(row?.game_name ?? row?.gameName ?? ""),
+  leaderboardDate: String(row?.leaderboard_date ?? row?.leaderboardDate ?? ""),
+  points: pickNum(row?.points, row?.score) ?? 0,
+  rewardTokens: pickNum(row?.reward_tokens, row?.rewardTokens) ?? 0,
+  raw: row,
+});
+
+export const fetchLeaderboardWinners = async ({
+  customGameId,
+  scoreboardType = "total_points",
+  leaderboardDate,
+  page = 1,
+  limit = 20,
+} = {}) => {
+  if (!customGameId) {
+    throw new Error("Game is required");
+  }
+  if (!leaderboardDate) {
+    throw new Error("Leaderboard date is required");
+  }
+
+  const response = await getApi("in-game-score/leaderboard/winners", {
+    custom_game_id: customGameId,
+    scoreboard_type: scoreboardType,
+    leaderboard_date: leaderboardDate,
+    page,
+    limit,
+  });
+
+  if (response?.status === 0) {
+    const err =
+      response?.message || response?.data?.error || "Failed to load leaderboard winners";
+    throw new Error(typeof err === "string" ? err : "Failed to load leaderboard winners");
+  }
+
+  const data = response?.data;
+  const rows = pickArray(Array.isArray(data) ? data : null, data?.winners, data?.list).map(
+    normalizeLeaderboardWinnerRow
+  );
+
+  const first = rows[0];
+  const resolvedLimit = pickNum(response?.limit) ?? limit;
+  const total = pickNum(response?.total) ?? rows.length;
+
+  return {
+    rows,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / resolvedLimit)),
+    page: pickNum(response?.page) ?? page,
+    limit: resolvedLimit,
+    totalToken:
+      pickNum(response?.total_tokens, response?.totalTokens, response?.total_token, response?.totalToken) ??
+      0,
+    gameName: String(first?.gameName || ""),
+    scoreboardType,
+    leaderboardDate: String(first?.leaderboardDate || leaderboardDate),
+    raw: response,
+  };
+};
+
 export const updateLoginStreakRewardStatus = async (ids, status) => {
   const idList = (Array.isArray(ids) ? ids : [ids]).filter((id) => id != null && id !== "");
   if (!idList.length) {

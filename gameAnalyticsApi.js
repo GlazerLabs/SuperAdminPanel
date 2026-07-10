@@ -22,11 +22,15 @@ const normalizeGameRow = (row) => {
   const id = row?.id ?? row?.game_id;
   const name = String(row?.game_name ?? row?.name ?? "").trim();
   if (id === undefined || id === null || !name) return null;
+  const scoreboardTypes = Array.isArray(row?.scoreboard_type)
+    ? row.scoreboard_type.map((type) => String(type).trim()).filter(Boolean)
+    : [];
   return {
     id,
     name,
     totalUsers: pickNum(row?.total_users, row?.totalUsers),
     countUserCustom: pickNum(row?.count_user_custom, row?.countUserCustom),
+    scoreboardTypes,
   };
 };
 
