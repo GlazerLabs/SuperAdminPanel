@@ -116,7 +116,7 @@ export default function LoginStreakClaimUsersPanel() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
+  const [limit, setLimit] = useState(10);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [normalTotalToken, setNormalTotalToken] = useState(0);
