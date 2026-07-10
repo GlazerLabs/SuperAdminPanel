@@ -69,10 +69,8 @@ function toDateInput(date) {
 }
 
 function defaultRange() {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(end.getDate() - 6); // last 7 days inclusive
-  return { startDate: toDateInput(start), endDate: toDateInput(end) };
+  const today = toDateInput(new Date());
+  return { startDate: today, endDate: today };
 }
 
 function formatCompact(n) {
