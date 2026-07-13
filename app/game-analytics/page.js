@@ -137,7 +137,7 @@ export default function GameAnalyticsPage() {
   const initialRange = useMemo(() => defaultRange(), []);
 
   const [games, setGames] = useState([]);
-  const [selectedGameId, setSelectedGameId] = useState("");
+  const [selectedGameId, setSelectedGameId] = useState(ALL_GAMES_ID);
   const [startDate, setStartDate] = useState(initialRange.startDate);
   const [endDate, setEndDate] = useState(initialRange.endDate);
 
@@ -161,9 +161,9 @@ export default function GameAnalyticsPage() {
         setGames(list);
         setSelectedGameId((current) => {
           if (current === ALL_GAMES_ID) return ALL_GAMES_ID;
-          if (!current) return list[0]?.id || "";
+          if (!current) return ALL_GAMES_ID;
           const stillExists = list.some((game) => String(game.id) === String(current));
-          return stillExists ? current : list[0]?.id || "";
+          return stillExists ? current : ALL_GAMES_ID;
         });
       } catch (err) {
         if (!cancelled) setError(err?.message || "Failed to load games");
