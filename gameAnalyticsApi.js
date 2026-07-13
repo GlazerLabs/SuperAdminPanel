@@ -228,17 +228,18 @@ export const fetchAllGamesAnalytics = async ({ games, startDate, endDate }) => {
     gameName: game.name,
     label: game.name,
     users: pickNum(data?.uniqueUsers),
-    plays: pickNum(data?.totalPlays),
+    // Total plays bar uses custom-game/read-all (count_user_custom), not game-stats.
+    plays: pickNum(game?.countUserCustom),
     durationMinutes: pickNum(data?.totalDurationMinutes),
   }));
 
   const uniqueUsers = perGame.reduce((sum, row) => sum + row.users, 0);
-  const statsTotalPlays = perGame.reduce((sum, row) => sum + row.plays, 0);
-  const totalDurationMinutes = perGame.reduce((sum, row) => sum + row.durationMinutes, 0);
-  const rangeTotalPlays = successful.reduce(
-    (sum, { game }) => sum + pickNum(game?.countUserCustom),
+  const statsTotalPlays = successful.reduce(
+    (sum, { data }) => sum + pickNum(data?.totalPlays),
     0
   );
+  const totalDurationMinutes = perGame.reduce((sum, row) => sum + row.durationMinutes, 0);
+  const rangeTotalPlays = perGame.reduce((sum, row) => sum + row.plays, 0);
   const allTimeUniqueUsers = successful.reduce(
     (sum, { data }) => sum + pickNum(data?.allTime?.uniqueUsers),
     0
