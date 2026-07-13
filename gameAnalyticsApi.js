@@ -196,6 +196,82 @@ export const fetchGameAnalytics = async ({ gameName, startDate, endDate }) => {
 };
 
 /**
+ * Fetch game-stats for every game and return cumulative totals plus per-game
+ * rows for the All-games comparison chart. There is no dedicated "all" API.
+ */
+export const fetchAllGamesAnalytics = async ({ games, startDate, endDate }) => {
+  if (!Array.isArray(games) || !games.length) {
+    throw new Error("Games are required");
+  }
+
+  const settled = await Promise.allSettled(
+    games.map((game) =>
+      fetchGameAnalytics({
+        gameName: game.name,
+        startDate,
+        endDate,
+      }).then((data) => ({ game, data }))
+    )
+  );
+
+  const successful = settled
+    .filter((result) => result.status === "fulfilled")
+    .map((result) => result.value);
+
+  if (!successful.length) {
+    const firstError = settled.find((result) => result.status === "rejected")?.reason;
+    throw new Error(firstError?.message || "Failed to load game analytics");
+  }
+
+  const perGame = successful.map(({ game, data }) => ({
+    gameId: game.id,
+    gameName: game.name,
+    label: game.name,
+    users: pickNum(data?.uniqueUsers),
+    plays: pickNum(data?.totalPlays),
+    durationMinutes: pickNum(data?.totalDurationMinutes),
+  }));
+
+  const uniqueUsers = perGame.reduce((sum, row) => sum + row.users, 0);
+  const statsTotalPlays = perGame.reduce((sum, row) => sum + row.plays, 0);
+  const totalDurationMinutes = perGame.reduce((sum, row) => sum + row.durationMinutes, 0);
+  const rangeTotalPlays = successful.reduce(
+    (sum, { game }) => sum + pickNum(game?.countUserCustom),
+    0
+  );
+  const allTimeUniqueUsers = successful.reduce(
+    (sum, { data }) => sum + pickNum(data?.allTime?.uniqueUsers),
+    0
+  );
+  const allTimeTotalPlays = successful.reduce(
+    (sum, { game }) => sum + pickNum(game?.totalUsers),
+    0
+  );
+  const allTimeDurationMinutes = successful.reduce(
+    (sum, { data }) => sum + pickNum(data?.allTime?.totalDurationMinutes),
+    0
+  );
+
+  return {
+    gameName: "All",
+    isAllGames: true,
+    uniqueUsers,
+    totalPlays: rangeTotalPlays,
+    totalDurationMinutes,
+    avgDurationMinutes: statsTotalPlays > 0 ? totalDurationMinutes / statsTotalPlays : 0,
+    allTime: {
+      uniqueUsers: allTimeUniqueUsers,
+      totalPlays: allTimeTotalPlays,
+      totalDurationMinutes: allTimeDurationMinutes,
+      avgDurationMinutes:
+        allTimeTotalPlays > 0 ? allTimeDurationMinutes / allTimeTotalPlays : 0,
+    },
+    perGame,
+    timeline: [],
+  };
+};
+
+/**
  * Fetch time-bucket analytics for a single day.
  * Each slot is fetched with datetime from/to (e.g. 2026-07-01T00:00:00 → 2026-07-01T02:00:00).
  * @param {Object} params
