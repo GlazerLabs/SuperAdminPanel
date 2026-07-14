@@ -65,7 +65,11 @@ export default function MembersTable({
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [searchInput, setSearchInput] = useState("");
   const debounceRef = useRef(null);
+  const onSearchChangeRef = useRef(onSearchChange);
+  const lastEmittedSearchRef = useRef("");
   const router = useRouter();
+
+  onSearchChangeRef.current = onSearchChange;
 
   const isServer = remoteTotal != null && Number.isFinite(Number(remoteTotal));
   const totalItems = isServer ? Number(remoteTotal) : data.length;
@@ -120,15 +124,22 @@ export default function MembersTable({
   const endIndex = start + pageData.length;
 
   useEffect(() => {
-    if (!showSearch || typeof onSearchChange !== "function") return undefined;
+    if (!showSearch || typeof onSearchChangeRef.current !== "function") {
+      return undefined;
+    }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      onSearchChange(searchInput.trim());
+      const q = searchInput.trim();
+      // Skip if unchanged — prevents pagination reset when parent re-renders
+      // recreate an inline onSearchChange that always calls setPage(1).
+      if (lastEmittedSearchRef.current === q) return;
+      lastEmittedSearchRef.current = q;
+      onSearchChangeRef.current?.(q);
     }, 400);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [searchInput, showSearch, onSearchChange]);
+  }, [searchInput, showSearch]);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === pageData.length) {
