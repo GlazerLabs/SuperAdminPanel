@@ -52,6 +52,45 @@ function RankBadge({ rank }) {
   );
 }
 
+function UserAvatar({ name, id, src }) {
+  const [imageError, setImageError] = useState(false);
+  const initial = name?.trim()?.charAt(0)?.toUpperCase() || "?";
+  const photoUrl = typeof src === "string" ? src.trim() : "";
+
+  useEffect(() => {
+    setImageError(false);
+  }, [photoUrl]);
+
+  if (photoUrl && !imageError) {
+    return (
+      <img
+        src={photoUrl}
+        alt={name ? `${name} profile` : "Profile"}
+        className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-black/5"
+        onError={() => setImageError(true)}
+      />
+    );
+  }
+
+  const toneIndex = Math.abs(Number(String(id).replace(/\D/g, "")) || 0) % 6;
+  const tones = [
+    "bg-indigo-100 text-indigo-700",
+    "bg-emerald-100 text-emerald-700",
+    "bg-amber-100 text-amber-700",
+    "bg-sky-100 text-sky-700",
+    "bg-rose-100 text-rose-700",
+    "bg-violet-100 text-violet-700",
+  ];
+
+  return (
+    <div
+      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${tones[toneIndex]}`}
+    >
+      {initial}
+    </div>
+  );
+}
+
 export default function LeaderboardPanel() {
   const [games, setGames] = useState([]);
   const [gamesLoading, setGamesLoading] = useState(true);
@@ -163,6 +202,7 @@ export default function LeaderboardPanel() {
     return rows.filter(
       (row) =>
         row.name.toLowerCase().includes(q) ||
+        String(row.phone || "").toLowerCase().includes(q) ||
         row.username.toLowerCase().includes(q) ||
         String(row.id ?? "").includes(q) ||
         String(row.rank ?? "").includes(q)
@@ -275,7 +315,7 @@ export default function LeaderboardPanel() {
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, username, user ID, rank…"
+            placeholder="Search name, phone, user ID, rank…"
             className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
@@ -365,9 +405,15 @@ export default function LeaderboardPanel() {
                     <RankBadge rank={row.rank} />
                   </td>
                   <td className="px-4 py-3">
-                    <p className="font-medium text-slate-900">{row.name}</p>
-                    <p className="text-xs text-slate-500">@{row.username}</p>
-                    <p className="text-xs text-slate-400">#{row.id}</p>
+                    <div className="flex items-center gap-3">
+                      <UserAvatar name={row.name} id={row.id} src={row.profilePicUrl} />
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-slate-900">{row.name}</p>
+                        <p className="truncate text-xs text-slate-500">
+                          {row.phone && row.phone !== "—" ? row.phone : "—"}
+                        </p>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{row.gameName || "—"}</td>
                   <td className="px-4 py-3 font-semibold tabular-nums text-indigo-600">

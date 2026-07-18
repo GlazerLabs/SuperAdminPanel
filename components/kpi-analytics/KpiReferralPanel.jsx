@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { EmptyPanel } from "./KpiSection";
 
 function formatCompact(n) {
@@ -24,9 +24,27 @@ function toneFor(id) {
   return AVATAR_TONES[n % AVATAR_TONES.length];
 }
 
-function UserAvatar({ name, id, size = "md" }) {
+function UserAvatar({ name, id, src, size = "md" }) {
+  const [imageError, setImageError] = useState(false);
   const initial = name?.trim()?.charAt(0)?.toUpperCase() || "?";
   const sizeClass = size === "lg" ? "h-12 w-12 text-lg" : "h-9 w-9 text-sm";
+  const photoUrl = typeof src === "string" ? src.trim() : "";
+
+  useEffect(() => {
+    setImageError(false);
+  }, [photoUrl]);
+
+  if (photoUrl && !imageError) {
+    return (
+      <img
+        src={photoUrl}
+        alt={name ? `${name} profile` : "Profile"}
+        className={`shrink-0 rounded-full object-cover ring-1 ring-black/5 ${sizeClass}`}
+        onError={() => setImageError(true)}
+      />
+    );
+  }
+
   return (
     <div
       className={`flex shrink-0 items-center justify-center rounded-full font-semibold ${sizeClass} ${toneFor(id)}`}
@@ -94,14 +112,16 @@ function ReferralTreeList({ nodes, onSelect, selectedUserId }) {
                 <span key={i} className="ml-3 w-3 shrink-0 border-l border-dashed border-slate-200" />
               ))}
               <div className="flex flex-1 items-center gap-3 px-3 py-2.5">
-                <UserAvatar name={node.name} id={node.id} />
+                <UserAvatar name={node.name} id={node.id} src={node.profilePicUrl} />
                 <div className="min-w-0 flex-1">
                   <p
                     className={`truncate text-sm ${isRoot ? "font-semibold text-slate-900" : "font-medium text-slate-700"}`}
                   >
                     {node.name}
                   </p>
-                  <p className="truncate text-xs text-slate-400">#{node.id}</p>
+                  <p className="truncate text-xs text-slate-400">
+                    {node.phone && node.phone !== "—" ? node.phone : "—"}
+                  </p>
                 </div>
                 <span
                   className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold tabular-nums ${
@@ -157,7 +177,7 @@ export default function KpiReferralPanel({
     return rankedUsers.filter(
       (row) =>
         row.name.toLowerCase().includes(q) ||
-        row.email.toLowerCase().includes(q) ||
+        String(row.phone || "").toLowerCase().includes(q) ||
         row.referralCode.toLowerCase().includes(q) ||
         String(row.id).includes(q)
     );
@@ -190,7 +210,7 @@ export default function KpiReferralPanel({
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, email, code…"
+              placeholder="Search name, phone, code…"
               className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
             />
           </div>
@@ -219,11 +239,11 @@ export default function KpiReferralPanel({
                       }`}
                     >
                       <RankBadge rank={row.rank} />
-                      <UserAvatar name={row.name} id={row.id} />
+                      <UserAvatar name={row.name} id={row.id} src={row.profilePicUrl} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-slate-900">{row.name}</p>
                         <p className="truncate text-xs text-slate-400">
-                          {row.email !== "—" ? row.email : `#${row.id}`}
+                          {row.phone && row.phone !== "—" ? row.phone : "—"}
                         </p>
                       </div>
                       <div className="shrink-0 text-right">
@@ -255,11 +275,20 @@ export default function KpiReferralPanel({
         <div className="border-b border-slate-200 bg-linear-to-r from-indigo-50 to-white px-4 py-4">
           {selectedUser ? (
             <div className="flex items-center gap-4">
-              <UserAvatar name={selectedUser.name} id={selectedUser.id} size="lg" />
+              <UserAvatar
+                name={selectedUser.name}
+                id={selectedUser.id}
+                src={selectedUser.profilePicUrl}
+                size="lg"
+              />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-lg font-bold text-slate-900">{selectedUser.name}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                  <span>#{selectedUser.id}</span>
+                  <span>
+                    {selectedUser.phone && selectedUser.phone !== "—"
+                      ? selectedUser.phone
+                      : "—"}
+                  </span>
                   {selectedUser.referralCode && selectedUser.referralCode !== "—" ? (
                     <code className="rounded bg-white px-1.5 py-0.5 font-medium text-slate-600 ring-1 ring-slate-200">
                       {selectedUser.referralCode}

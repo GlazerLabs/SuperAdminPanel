@@ -184,6 +184,21 @@ export const fetchReferralUsers = async () => {
           "—"
       ),
       email: String(row?.email ?? "—"),
+      phone: String(
+        row?.phone ??
+          row?.mobile ??
+          row?.contact ??
+          row?.phone_number ??
+          row?.phoneNumber ??
+          "—"
+      ),
+      profilePicUrl:
+        row?.profile_pic_url ??
+        row?.profilePicUrl ??
+        row?.avatar_url ??
+        row?.avatarUrl ??
+        row?.avatar ??
+        null,
       referralCode: String(row?.referral_code ?? row?.referralCode ?? row?.code ?? "—"),
       referralCount: pickNum(row?.referral_count, row?.referralCount, row?.total_referrals) ?? 0,
       pointsEarned: pickNum(row?.points_earned, row?.pointsEarned, row?.points) ?? 0,
@@ -211,6 +226,21 @@ const normalizeTreeNode = (node, depth = 0) => {
         "—"
     ),
     email: String(node?.email ?? "—"),
+    phone: String(
+      node?.phone ??
+        node?.mobile ??
+        node?.contact ??
+        node?.phone_number ??
+        node?.phoneNumber ??
+        "—"
+    ),
+    profilePicUrl:
+      node?.profile_pic_url ??
+      node?.profilePicUrl ??
+      node?.avatar_url ??
+      node?.avatarUrl ??
+      node?.avatar ??
+      null,
     referralCode: String(node?.referral_code ?? node?.referralCode ?? node?.code ?? "—"),
     referralCount: pickNum(node?.referral_count, node?.referralCount, node?.total_referrals) ?? 0,
     depth,
@@ -357,7 +387,13 @@ const normalizeLoginStreakClaimUserRow = (row) => ({
   name: String(row?.full_name ?? row?.fullName ?? row?.username ?? "—"),
   mobile: String(row?.mobile ?? "—"),
   email: row?.email ? String(row.email) : "—",
-  profilePicUrl: row?.profile_pic_url ?? row?.profilePicUrl ?? null,
+  profilePicUrl:
+    row?.profile_pic_url ??
+    row?.profilePicUrl ??
+    row?.avatar_url ??
+    row?.avatarUrl ??
+    row?.avatar ??
+    null,
   totalClaimDays: pickNum(row?.total_claim_days, row?.totalClaimDays) ?? 0,
   normalClaims: pickNum(row?.normal_claims, row?.normalClaims) ?? 0,
   adClaims: pickNum(row?.ad_claims, row?.adClaims) ?? 0,
@@ -402,6 +438,21 @@ const normalizeLeaderboardWinnerRow = (row, index) => ({
   id: row?.user_id ?? row?.userId ?? row?.id,
   username: String(row?.username ?? "—"),
   name: String(row?.full_name ?? row?.fullName ?? row?.username ?? "—"),
+  phone: String(
+    row?.phone ??
+      row?.mobile ??
+      row?.contact ??
+      row?.phone_number ??
+      row?.phoneNumber ??
+      "—"
+  ),
+  profilePicUrl:
+    row?.profile_pic_url ??
+    row?.profilePicUrl ??
+    row?.avatar_url ??
+    row?.avatarUrl ??
+    row?.avatar ??
+    null,
   gameId: row?.game_id ?? row?.gameId ?? null,
   gameName: String(row?.game_name ?? row?.gameName ?? ""),
   leaderboardDate: String(row?.leaderboard_date ?? row?.leaderboardDate ?? ""),

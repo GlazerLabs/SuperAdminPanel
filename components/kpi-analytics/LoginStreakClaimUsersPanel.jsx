@@ -80,6 +80,45 @@ function claimTypeBadgeClass(type) {
   return "bg-slate-100 text-slate-600";
 }
 
+function UserAvatar({ name, id, src }) {
+  const [imageError, setImageError] = useState(false);
+  const initial = name?.trim()?.charAt(0)?.toUpperCase() || "?";
+  const photoUrl = typeof src === "string" ? src.trim() : "";
+
+  useEffect(() => {
+    setImageError(false);
+  }, [photoUrl]);
+
+  if (photoUrl && !imageError) {
+    return (
+      <img
+        src={photoUrl}
+        alt={name ? `${name} profile` : "Profile"}
+        className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-black/5"
+        onError={() => setImageError(true)}
+      />
+    );
+  }
+
+  const toneIndex = Math.abs(Number(String(id).replace(/\D/g, "")) || 0) % 6;
+  const tones = [
+    "bg-indigo-100 text-indigo-700",
+    "bg-emerald-100 text-emerald-700",
+    "bg-amber-100 text-amber-700",
+    "bg-sky-100 text-sky-700",
+    "bg-rose-100 text-rose-700",
+    "bg-violet-100 text-violet-700",
+  ];
+
+  return (
+    <div
+      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${tones[toneIndex]}`}
+    >
+      {initial}
+    </div>
+  );
+}
+
 function csvEscape(val) {
   const str = val == null ? "" : String(val);
   if (/[",\n\r]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
@@ -366,9 +405,14 @@ export default function LoginStreakClaimUsersPanel() {
               {filteredRows.map((row) => (
                 <tr key={row.id} className="hover:bg-slate-50/80">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-slate-900">{row.name}</p>
-                    <p className="text-xs text-slate-500">@{row.username}</p>
-                    <p className="text-xs text-slate-400">#{row.id}</p>
+                    <div className="flex items-center gap-3">
+                      <UserAvatar name={row.name} id={row.id} src={row.profilePicUrl} />
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-slate-900">{row.name}</p>
+                        <p className="truncate text-xs text-slate-500">@{row.username}</p>
+                        <p className="truncate text-xs text-slate-400">#{row.id}</p>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{row.mobile}</td>
                   <td className="px-4 py-3 text-slate-600">{row.email}</td>
