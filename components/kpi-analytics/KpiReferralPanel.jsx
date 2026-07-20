@@ -10,6 +10,12 @@ function formatCompact(n) {
   return `${(num / 1000).toFixed(1).replace(/\.0$/, "")}k`;
 }
 
+function contactLabel(user) {
+  if (user?.phone && user.phone !== "—") return user.phone;
+  if (user?.email && user.email !== "—") return user.email;
+  return "—";
+}
+
 const AVATAR_TONES = [
   "bg-indigo-100 text-indigo-700",
   "bg-emerald-100 text-emerald-700",
@@ -120,7 +126,7 @@ function ReferralTreeList({ nodes, onSelect, selectedUserId }) {
                     {node.name}
                   </p>
                   <p className="truncate text-xs text-slate-400">
-                    {node.phone && node.phone !== "—" ? node.phone : "—"}
+                    {contactLabel(node)}
                   </p>
                 </div>
                 <span
@@ -178,6 +184,7 @@ export default function KpiReferralPanel({
       (row) =>
         row.name.toLowerCase().includes(q) ||
         String(row.phone || "").toLowerCase().includes(q) ||
+        String(row.email || "").toLowerCase().includes(q) ||
         row.referralCode.toLowerCase().includes(q) ||
         String(row.id).includes(q)
     );
@@ -210,7 +217,7 @@ export default function KpiReferralPanel({
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, phone, code…"
+              placeholder="Search name, phone, email, code…"
               className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
             />
           </div>
@@ -243,7 +250,7 @@ export default function KpiReferralPanel({
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-slate-900">{row.name}</p>
                         <p className="truncate text-xs text-slate-400">
-                          {row.phone && row.phone !== "—" ? row.phone : "—"}
+                          {contactLabel(row)}
                         </p>
                       </div>
                       <div className="shrink-0 text-right">
@@ -284,11 +291,7 @@ export default function KpiReferralPanel({
               <div className="min-w-0 flex-1">
                 <p className="truncate text-lg font-bold text-slate-900">{selectedUser.name}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                  <span>
-                    {selectedUser.phone && selectedUser.phone !== "—"
-                      ? selectedUser.phone
-                      : "—"}
-                  </span>
+                  <span>{contactLabel(selectedUser)}</span>
                   {selectedUser.referralCode && selectedUser.referralCode !== "—" ? (
                     <code className="rounded bg-white px-1.5 py-0.5 font-medium text-slate-600 ring-1 ring-slate-200">
                       {selectedUser.referralCode}
