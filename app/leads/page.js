@@ -260,15 +260,40 @@ function mapApiLead(item) {
   };
 }
 
-function extractLeadsTotal(json, rowsLength) {
-  return (
+function extractLeadsTotal(json, rowsLength, options = {}) {
+  const {
+    page = 1,
+    limit = DEFAULT_LIMIT,
+    hasActiveFilters = false,
+    stageOnlyFilter = false,
+    stageFilter = "",
+    statusCountsFromApi = null,
+  } = options;
+
+  const apiTotal =
     Number(json?.total) ||
     Number(json?.count) ||
     Number(json?.meta?.total) ||
     Number(json?.pagination?.total) ||
     Number(json?.data?.total) ||
-    rowsLength
-  );
+    0;
+
+  if (hasActiveFilters) {
+    // Last page (or only page): exact count from returned rows.
+    if (rowsLength < limit) {
+      return (page - 1) * limit + rowsLength;
+    }
+
+    // Stage-only filter: backend total can be unfiltered; use status breakdown instead.
+    if (stageOnlyFilter && stageFilter && statusCountsFromApi?.[stageFilter] != null) {
+      const stageTotal = Number(statusCountsFromApi[stageFilter]);
+      if (Number.isFinite(stageTotal) && stageTotal > 0) {
+        return stageTotal;
+      }
+    }
+  }
+
+  return apiTotal || rowsLength;
 }
 
 const STATUS_PILL_CLASS = {
@@ -389,6 +414,7 @@ export default function LeadTrackingPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [searchLead, setSearchLead] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
+  const [stageFilter, setStageFilter] = useState("");
   const [followUpWindowActive, setFollowUpWindowActive] = useState(false);
 
   const router = useRouter();
@@ -514,6 +540,7 @@ export default function LeadTrackingPage() {
           limit: entriesPerPage,
           ...(searchLead.trim() ? { search: searchLead.trim() } : {}),
           ...(priorityFilter ? { priority: priorityFilter } : {}),
+          ...(stageFilter ? { stage: stageFilter } : {}),
           ...(followUpWindowActive ? followUpRange : {}),
         });
         if (!json || json.status !== 1 || !Array.isArray(json.data)) {
@@ -521,16 +548,25 @@ export default function LeadTrackingPage() {
         }
 
         const mapped = json.data.map(mapApiLead);
-        const metaTotal = extractLeadsTotal(json, mapped.length);
+        const hasActiveFilters = Boolean(
+          searchLead.trim() || priorityFilter || stageFilter || followUpWindowActive
+        );
+        const stageOnlyFilter = Boolean(
+          stageFilter && !searchLead.trim() && !priorityFilter && !followUpWindowActive
+        );
+        const metaTotal = extractLeadsTotal(json, mapped.length, {
+          page: currentPage,
+          limit: entriesPerPage,
+          hasActiveFilters,
+          stageOnlyFilter,
+          stageFilter,
+          statusCountsFromApi,
+        });
 
         if (isMounted) {
           setLeads(mapped);
           setTotalCount(metaTotal);
-          setCanGoNext(
-            metaTotal > 0
-              ? currentPage * entriesPerPage < metaTotal
-              : mapped.length === entriesPerPage
-          );
+          setCanGoNext(currentPage * entriesPerPage < metaTotal);
         }
       } catch (err) {
         // eslint-disable-next-line no-console
@@ -550,11 +586,20 @@ export default function LeadTrackingPage() {
     return () => {
       isMounted = false;
     };
-  }, [currentPage, entriesPerPage, refreshSeed, searchLead, priorityFilter, followUpWindowActive]);
+  }, [
+    currentPage,
+    entriesPerPage,
+    refreshSeed,
+    searchLead,
+    priorityFilter,
+    stageFilter,
+    followUpWindowActive,
+    statusCountsFromApi,
+  ]);
 
   useEffect(() => {
     setCurrentPage(DEFAULT_PAGE);
-  }, [searchLead, priorityFilter, followUpWindowActive]);
+  }, [searchLead, priorityFilter, stageFilter, followUpWindowActive]);
 
   const handleFollowUpsCardClick = () => {
     setFollowUpWindowActive(true);
@@ -1108,6 +1153,18 @@ export default function LeadTrackingPage() {
             <option value="Hot">Hot</option>
             <option value="Cold">Cold</option>
             <option value="Not Interested">Not Interested</option>
+          </select>
+          <select
+            value={stageFilter}
+            onChange={(e) => setStageFilter(e.target.value)}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm"
+          >
+            <option value="">All stages</option>
+            {STATUS_OPTIONS.map((stage) => (
+              <option key={stage} value={stage}>
+                {stage}
+              </option>
+            ))}
           </select>
           {followUpWindowActive && (
             <button
