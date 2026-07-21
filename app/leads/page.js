@@ -894,6 +894,22 @@ export default function LeadTrackingPage() {
     }));
   }, [statusCountsFromApi, statusCountsFallback]);
 
+  const outcomeCounts = useMemo(() => {
+    if (statusCountsFromApi && Object.keys(statusCountsFromApi).length > 0) {
+      return {
+        won: Number(statusCountsFromApi.Won) || 0,
+        hold: Number(statusCountsFromApi.Hold) || 0,
+        lost: Number(statusCountsFromApi.Lost) || 0,
+      };
+    }
+
+    return {
+      won: statusCountsFallback.Won || 0,
+      hold: statusCountsFallback.Hold || 0,
+      lost: statusCountsFallback.Lost || 0,
+    };
+  }, [statusCountsFromApi, statusCountsFallback]);
+
   return (
     <main className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -939,15 +955,29 @@ export default function LeadTrackingPage() {
         </section>
       ) : (
         <section className="grid gap-4 md:grid-cols-3">
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-500 to-violet-500 p-5 text-white shadow-lg shadow-indigo-500/30">
-            <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10" />
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-100/90">
+          <div className="relative overflow-hidden rounded-2xl bg-white p-5 shadow-md shadow-slate-200/70 ring-1 ring-slate-200/90">
+            <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-indigo-100" />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
               Total leads
             </p>
-            <p className="mt-3 text-3xl font-bold tracking-tight">{totalLeads}</p>
-            <p className="mt-1 text-xs text-indigo-100/90">
-              {activeLeads.length} currently active in pipeline
-            </p>
+            <p className="mt-3 text-3xl font-bold tracking-tight text-slate-900">{totalLeads}</p>
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
+              <span className="text-slate-500">{activeLeads.length} currently active in pipeline</span>
+              <span className="flex shrink-0 items-center gap-2.5">
+                <span>
+                  <span className="text-slate-400">Win </span>
+                  <span className="font-bold text-emerald-600">{outcomeCounts.won}</span>
+                </span>
+                <span>
+                  <span className="text-slate-400">Hold </span>
+                  <span className="font-bold text-orange-600">{outcomeCounts.hold}</span>
+                </span>
+                <span>
+                  <span className="text-slate-400">Lose </span>
+                  <span className="font-bold text-rose-600">{outcomeCounts.lost}</span>
+                </span>
+              </span>
+            </div>
           </div>
           <div className="relative overflow-hidden rounded-2xl bg-white p-5 shadow-md shadow-slate-200/70 ring-1 ring-slate-200/90">
             <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-emerald-100" />
