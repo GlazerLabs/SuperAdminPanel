@@ -2,34 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { EmptyPanel, ShimmerCard } from "@/components/kpi-analytics/KpiSection";
-import { fetchLoginStreakClaimUsers } from "@/kpiAnalyticsApi";
-
-const SUMMARY_CARDS = [
-  { label: "Total users", key: "totalUsers", tone: "bg-indigo-500/10" },
-  { label: "Normal token", key: "normalTotalToken", tone: "bg-sky-500/10" },
-  { label: "Ad token", key: "adTotalToken", tone: "bg-violet-500/10" },
-  { label: "Total token", key: "combinedTotalToken", tone: "bg-emerald-500/10" },
-  { label: "Revenue", key: "revenue", tone: "bg-amber-500/10", format: "currency" },
-];
-
-const ADMOB_REVENUE_START_DATE = "2026-07-04";
+import { fetchHubbleRedeemAnalytics } from "@/kpiAnalyticsApi";
 
 const ENTRIES_OPTIONS = [10, 20, 50];
 
 const CSV_COLUMNS = [
-  { key: "id", label: "User ID" },
+  { key: "userId", label: "User ID" },
   { key: "username", label: "Username" },
   { key: "name", label: "Full Name" },
-  { key: "mobile", label: "Mobile" },
+  { key: "phoneNumber", label: "Phone" },
   { key: "email", label: "Email" },
-  { key: "totalClaimDays", label: "Claim Days" },
-  { key: "normalClaims", label: "Normal Claims" },
-  { key: "adClaims", label: "Ad Claims" },
-  { key: "normalToken", label: "Normal Token" },
-  { key: "adToken", label: "Ad Token" },
-  { key: "totalToken", label: "Total Token" },
-  { key: "lastClaimAt", label: "Last Claim At" },
-  { key: "lastClaimType", label: "Last Claim Type" },
+  { key: "redeemedTokens", label: "Redeemed Tokens" },
+  { key: "availableHubbleBalance", label: "Available Hubble Balance" },
+  { key: "redeemedAt", label: "Redeemed At" },
 ];
 
 function formatDate(value) {
@@ -49,35 +34,6 @@ function formatNum(value) {
   const num = Number(value);
   if (!Number.isFinite(num)) return "—";
   return num.toLocaleString();
-}
-
-function formatCurrency(value) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "—";
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(num);
-}
-
-function formatSummaryValue(value, format) {
-  if (format === "currency") return formatCurrency(value);
-  return formatNum(value);
-}
-
-function todayYmd() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function claimTypeBadgeClass(type) {
-  if (type === "ad") return "bg-violet-100 text-violet-700";
-  if (type === "normal") return "bg-sky-100 text-sky-700";
-  return "bg-slate-100 text-slate-600";
 }
 
 function UserAvatar({ name, id, src }) {
@@ -129,7 +85,7 @@ function rowsToCsv(rows) {
   const header = CSV_COLUMNS.map((col) => csvEscape(col.label)).join(",");
   const lines = rows.map((row) =>
     CSV_COLUMNS.map((col) => {
-      if (col.key === "lastClaimAt") return csvEscape(formatDate(row.lastClaimAt));
+      if (col.key === "redeemedAt") return csvEscape(formatDate(row.redeemedAt));
       return csvEscape(row[col.key] ?? "");
     }).join(",")
   );
@@ -148,72 +104,46 @@ function downloadCsv(csv, filename) {
   URL.revokeObjectURL(url);
 }
 
-export default function LoginStreakClaimUsersPanel() {
+export default function HubbleAnalyticsPanel() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const [limit, setLimit] = useState(20);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [normalTotalToken, setNormalTotalToken] = useState(0);
-  const [adTotalToken, setAdTotalToken] = useState(0);
-  const [adClaimsCount, setAdClaimsCount] = useState(0);
-  const [revenue, setRevenue] = useState(null);
-  const [revenueLoading, setRevenueLoading] = useState(true);
+  const [totalRedeemedTokens, setTotalRedeemedTokens] = useState(0);
 
   const loadRows = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const result = await fetchLoginStreakClaimUsers({ page, limit });
+      const result = await fetchHubbleRedeemAnalytics({
+        page,
+        limit,
+        sortBy: "redeemedAt",
+        sortOrder: "DESC",
+      });
       setRows(result.rows);
       setTotal(result.total);
       setTotalPages(result.totalPages);
-      setNormalTotalToken(result.normalTotalToken);
-      setAdTotalToken(result.adTotalToken);
-      setAdClaimsCount(result.adClaimsCount);
+      setTotalRedeemedTokens(result.totalRedeemedTokens);
     } catch (err) {
       setRows([]);
       setTotal(0);
       setTotalPages(1);
-      setNormalTotalToken(0);
-      setAdTotalToken(0);
-      setAdClaimsCount(0);
-      setError(err?.message || err?.error || "Failed to load login streak data");
+      setTotalRedeemedTokens(0);
+      setError(err?.message || err?.error || "Failed to load Hubble analytics");
     } finally {
       setLoading(false);
     }
   }, [page, limit]);
 
-  const loadRevenue = useCallback(async () => {
-    setRevenueLoading(true);
-    try {
-      const endDate = todayYmd();
-      const res = await fetch(
-        `/api/analytics?startDate=${ADMOB_REVENUE_START_DATE}&endDate=${endDate}`
-      );
-      const json = await res.json();
-      if (!res.ok || !json?.success) {
-        throw new Error(json?.error || "Failed to load AdMob revenue");
-      }
-      setRevenue(Number(json?.kpis?.estimatedEarnings ?? 0));
-    } catch {
-      setRevenue(null);
-    } finally {
-      setRevenueLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     loadRows();
   }, [loadRows]);
-
-  useEffect(() => {
-    loadRevenue();
-  }, [loadRevenue]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -223,8 +153,8 @@ export default function LoginStreakClaimUsersPanel() {
         row.name.toLowerCase().includes(q) ||
         row.username.toLowerCase().includes(q) ||
         row.email.toLowerCase().includes(q) ||
-        row.mobile.toLowerCase().includes(q) ||
-        String(row.id ?? "").includes(q)
+        row.phoneNumber.toLowerCase().includes(q) ||
+        String(row.userId ?? "").includes(q)
     );
   }, [rows, search]);
 
@@ -254,11 +184,21 @@ export default function LoginStreakClaimUsersPanel() {
     setError("");
     try {
       const exportLimit = 100;
-      const first = await fetchLoginStreakClaimUsers({ page: 1, limit: exportLimit });
+      const first = await fetchHubbleRedeemAnalytics({
+        page: 1,
+        limit: exportLimit,
+        sortBy: "redeemedAt",
+        sortOrder: "DESC",
+      });
       let allRows = [...first.rows];
 
       for (let p = 2; p <= first.totalPages; p += 1) {
-        const next = await fetchLoginStreakClaimUsers({ page: p, limit: exportLimit });
+        const next = await fetchHubbleRedeemAnalytics({
+          page: p,
+          limit: exportLimit,
+          sortBy: "redeemedAt",
+          sortOrder: "DESC",
+        });
         allRows = allRows.concat(next.rows);
       }
 
@@ -266,37 +206,27 @@ export default function LoginStreakClaimUsersPanel() {
 
       const csv = rowsToCsv(allRows);
       const date = new Date().toISOString().slice(0, 10);
-      downloadCsv(csv, `login-streak-claim-users_${date}.csv`);
+      downloadCsv(csv, `hubble-redeem-analytics_${date}.csv`);
     } catch (err) {
-      setError(err?.message || err?.error || "Failed to export login streak data");
+      setError(err?.message || err?.error || "Failed to export Hubble analytics");
     } finally {
       setExporting(false);
     }
   };
 
-  const summaryValues = {
-    totalUsers: total,
-    normalTotalToken,
-    adTotalToken,
-    combinedTotalToken: normalTotalToken + adTotalToken,
-    revenue,
-  };
-
-  const summaryLoading = loading || revenueLoading;
-
   return (
     <section className="overflow-hidden rounded-2xl bg-white shadow-md shadow-slate-200/50 ring-1 ring-slate-200/80">
-      <div className="space-y-3 border-b border-slate-200 px-4 py-4">
+      <div className="space-y-4 border-b border-slate-200 px-4 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-base font-semibold text-slate-900">Login streak claims</h3>
+            <h3 className="text-base font-semibold text-slate-900">Hubble Analytics</h3>
             <p className="mt-0.5 text-sm text-slate-500">
-              Users who have claimed login streak rewards
+              Token redeem history from Hubble integration
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
-              {loading ? "—" : `${total.toLocaleString()} users`}
+              {loading ? "—" : `${total.toLocaleString()} redeems`}
             </span>
             <button
               type="button"
@@ -323,40 +253,37 @@ export default function LoginStreakClaimUsersPanel() {
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, username, email, mobile, user ID…"
+            placeholder="Search name, username, email, phone, user ID…"
             className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
       </div>
 
-      <div className="grid gap-4 border-b border-slate-200 px-4 py-4 sm:grid-cols-2 lg:grid-cols-5">
-        {summaryLoading
-          ? SUMMARY_CARDS.map((card) => <ShimmerCard key={card.key} />)
-          : SUMMARY_CARDS.map((card) => (
-              <div
-                key={card.key}
-                className="relative overflow-hidden rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200/80"
-              >
-                <div
-                  className={`absolute right-0 top-0 h-16 w-16 translate-x-3 -translate-y-3 rounded-full ${card.tone}`}
-                />
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                  {card.label}
-                </p>
-                <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
-                  {card.key === "combinedTotalToken" ? (
-                    formatNum(summaryValues.combinedTotalToken)
-                  ) : (
-                    formatSummaryValue(summaryValues[card.key], card.format)
-                  )}
-                </p>
-                {card.key === "combinedTotalToken" ? (
-                  <p className="mt-1 text-xs font-medium text-violet-600">
-                    {formatNum(adClaimsCount)} users watched ad
-                  </p>
-                ) : null}
-              </div>
-            ))}
+      <div className="grid gap-4 border-b border-slate-200 px-4 py-4 sm:grid-cols-2">
+        {loading ? (
+          Array.from({ length: 2 }).map((_, index) => <ShimmerCard key={index} />)
+        ) : (
+          <>
+            <div className="relative overflow-hidden rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200/80">
+              <div className="absolute right-0 top-0 h-16 w-16 translate-x-3 -translate-y-3 rounded-full bg-indigo-500/10" />
+              <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                Total redeems
+              </p>
+              <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
+                {formatNum(total)}
+              </p>
+            </div>
+            <div className="relative overflow-hidden rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200/80">
+              <div className="absolute right-0 top-0 h-16 w-16 translate-x-3 -translate-y-3 rounded-full bg-violet-500/10" />
+              <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                Redeemed tokens
+              </p>
+              <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
+                {formatNum(totalRedeemedTokens)}
+              </p>
+            </div>
+          </>
+        )}
       </div>
 
       {error ? (
@@ -374,17 +301,17 @@ export default function LoginStreakClaimUsersPanel() {
       ) : !filteredRows.length ? (
         <div className="p-6">
           <EmptyPanel
-            title={search ? "No matches" : "No login streak claims"}
+            title={search ? "No matches" : "No Hubble redeems"}
             description={
               search
                 ? "Try a different search term."
-                : "No users have claimed login streak rewards yet."
+                : "No Hubble token redeems found yet."
             }
           />
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="min-w-[1100px] w-full text-left text-sm">
+          <table className="min-w-[1000px] w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50">
               <tr>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -397,19 +324,13 @@ export default function LoginStreakClaimUsersPanel() {
                   Email
                 </th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Claim days
+                  Redeemed tokens
                 </th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Normal
+                  Available balance
                 </th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Ad
-                </th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Total token
-                </th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Last claim
+                  Redeemed at
                 </th>
               </tr>
             </thead>
@@ -418,46 +339,23 @@ export default function LoginStreakClaimUsersPanel() {
                 <tr key={row.id} className="hover:bg-slate-50/80">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <UserAvatar name={row.name} id={row.id} src={row.profilePicUrl} />
+                      <UserAvatar name={row.name} id={row.userId} src={row.profilePicUrl} />
                       <div className="min-w-0">
                         <p className="truncate font-medium text-slate-900">{row.name}</p>
                         <p className="truncate text-xs text-slate-500">@{row.username}</p>
-                        <p className="truncate text-xs text-slate-400">#{row.id}</p>
+                        <p className="truncate text-xs text-slate-400">#{row.userId}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{row.mobile}</td>
+                  <td className="px-4 py-3 text-slate-600">{row.phoneNumber}</td>
                   <td className="px-4 py-3 text-slate-600">{row.email}</td>
-                  <td className="px-4 py-3 font-semibold tabular-nums text-indigo-600">
-                    {formatNum(row.totalClaimDays)}
+                  <td className="px-4 py-3 font-semibold tabular-nums text-violet-600">
+                    {formatNum(row.redeemedTokens)}
                   </td>
-                  <td className="px-4 py-3">
-                    <p className="tabular-nums text-slate-700">
-                      {formatNum(row.normalClaims)} claims
-                    </p>
-                    <p className="text-xs tabular-nums text-slate-400">
-                      {formatNum(row.normalToken)} token
-                    </p>
+                  <td className="px-4 py-3 font-semibold tabular-nums text-emerald-600">
+                    {formatNum(row.availableHubbleBalance)}
                   </td>
-                  <td className="px-4 py-3">
-                    <p className="tabular-nums text-slate-700">{formatNum(row.adClaims)} claims</p>
-                    <p className="text-xs tabular-nums text-slate-400">
-                      {formatNum(row.adToken)} token
-                    </p>
-                  </td>
-                  <td className="px-4 py-3 font-semibold tabular-nums text-slate-900">
-                    {formatNum(row.totalToken)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="text-slate-600">{formatDate(row.lastClaimAt)}</p>
-                    {row.lastClaimType !== "—" ? (
-                      <span
-                        className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${claimTypeBadgeClass(row.lastClaimType)}`}
-                      >
-                        {row.lastClaimType}
-                      </span>
-                    ) : null}
-                  </td>
+                  <td className="px-4 py-3 text-slate-600">{formatDate(row.redeemedAt)}</td>
                 </tr>
               ))}
             </tbody>

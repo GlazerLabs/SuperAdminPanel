@@ -16,6 +16,7 @@ import ApprovalsPanel from "@/components/kpi-analytics/ApprovalsPanel";
 import KpiPerformanceTable from "@/components/kpi-analytics/KpiPerformanceTable";
 import KpiReferralPanel from "@/components/kpi-analytics/KpiReferralPanel";
 import LeaderboardPanel from "@/components/kpi-analytics/LeaderboardPanel";
+import HubbleAnalyticsPanel from "@/components/kpi-analytics/HubbleAnalyticsPanel";
 import LoginStreakClaimUsersPanel from "@/components/kpi-analytics/LoginStreakClaimUsersPanel";
 import {
   ChangeBadge,
@@ -37,6 +38,7 @@ const PAGE_TABS = [
   { id: "analytics", label: "Analytics" },
   { id: "top-referrals", label: "Top Referrals" },
   { id: "login-streak-claims", label: "Login streak Claims" },
+  { id: "hubble-analytics", label: "Hubble Analytics" },
   { id: "leaderboard", label: "Leaderboard" },
   { id: "approvals", label: "Approvals" },
 ];
@@ -251,6 +253,8 @@ export default function KpiAnalyticsPage() {
       ) : null}
 
       {activeTab === "login-streak-claims" ? <LoginStreakClaimUsersPanel /> : null}
+
+      {activeTab === "hubble-analytics" ? <HubbleAnalyticsPanel /> : null}
 
       {activeTab === "leaderboard" ? <LeaderboardPanel /> : null}
 

@@ -429,6 +429,7 @@ export const fetchLoginStreakClaimUsers = async ({ page = 1, limit = 20 } = {}) 
     limit: resolvedLimit,
     normalTotalToken: pickNum(response?.normal_total_token, response?.normalTotalToken) ?? 0,
     adTotalToken: pickNum(response?.ad_total_token, response?.adTotalToken) ?? 0,
+    adClaimsCount: pickNum(response?.ad_claims_count, response?.adClaimsCount) ?? 0,
     raw: response,
   };
 };
@@ -510,6 +511,67 @@ export const fetchLeaderboardWinners = async ({
     gameName: String(first?.gameName || ""),
     scoreboardType,
     leaderboardDate: String(first?.leaderboardDate || leaderboardDate),
+    raw: response,
+  };
+};
+
+const normalizeHubbleRedeemRow = (row, index) => ({
+  id: `${row?.userId ?? "unknown"}-${row?.redeemedAt ?? index}`,
+  userId: row?.userId ?? null,
+  username: String(row?.username ?? "—"),
+  name: String(row?.fullName ?? row?.username ?? "—"),
+  email: row?.email ? String(row.email) : "—",
+  phoneNumber: String(row?.phoneNumber ?? "—"),
+  profilePicUrl: row?.profilePicUrl ?? row?.profile_pic_url ?? null,
+  redeemedAt: row?.redeemedAt ?? row?.redeemed_at ?? null,
+  redeemedTokens: pickNum(row?.redeemedTokens, row?.redeemed_tokens) ?? 0,
+  availableHubbleBalance:
+    pickNum(row?.availableHubbleBalance, row?.available_hubble_balance) ?? 0,
+  raw: row,
+});
+
+export const fetchHubbleRedeemAnalytics = async ({
+  page = 1,
+  limit = 20,
+  sortBy = "redeemedAt",
+  sortOrder = "DESC",
+  userId,
+  email,
+  phoneNumber,
+  dateFrom,
+  dateTo,
+} = {}) => {
+  const params = { page, limit, sortBy, sortOrder };
+  if (userId != null && userId !== "") params.userId = userId;
+  if (email) params.email = email;
+  if (phoneNumber) params.phoneNumber = phoneNumber;
+  if (dateFrom) params.dateFrom = dateFrom;
+  if (dateTo) params.dateTo = dateTo;
+
+  const response = await getApi("hubble/analytics/redeems", params);
+
+  if (response?.status === 0) {
+    const err = response?.message || response?.data?.error || "Failed to load Hubble analytics";
+    throw new Error(typeof err === "string" ? err : "Failed to load Hubble analytics");
+  }
+
+  const records = pickArray(response?.records, response?.data?.records);
+  const pagination =
+    response?.pagination && typeof response.pagination === "object" ? response.pagination : {};
+
+  const resolvedLimit = pickNum(pagination.limit) ?? limit;
+  const total = pickNum(pagination.totalRecords, pagination.total_records) ?? records.length;
+  const totalPages =
+    pickNum(pagination.totalPages, pagination.total_pages) ?? Math.max(1, Math.ceil(total / resolvedLimit));
+
+  return {
+    rows: records.map(normalizeHubbleRedeemRow),
+    total,
+    totalPages,
+    page: pickNum(pagination.page) ?? page,
+    limit: resolvedLimit,
+    totalRedeemedTokens:
+      pickNum(pagination.totalRedeemedTokens, pagination.total_redeemed_tokens) ?? 0,
     raw: response,
   };
 };
