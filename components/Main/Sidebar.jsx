@@ -22,6 +22,12 @@ const ALL_PRIMARY_NAV = [
   // { label: "Achievements Analytics", href: "/achivements", icon: "events" },
   { label: "KPI Analytics", href: "/kpi-analytics", icon: "analytics", matchPrefix: true },
   { label: "Game Analytics", href: "/game-analytics", icon: "gamepad", matchPrefix: true },
+  {
+    label: "Campaigns Analytics",
+    href: "/campaigns-analytics",
+    icon: "analytics",
+    matchPrefix: true,
+  },
   // {
   //   label: "App Analytics",
   //   href: "/app-analytics",
