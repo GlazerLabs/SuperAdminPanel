@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createDirectUploadSession, resolveFileWebUrl } from "@/lib/onedrive";
+import { createDirectUploadSession, resolveFileWebUrl } from "@/lib/googledrive";
 
 async function resolveLeadId(params) {
   const resolved = await Promise.resolve(params);
@@ -18,12 +18,20 @@ export async function POST(req, { params }) {
     const subfolder = String(body.subfolder || "Others");
     const leadName = String(body.leadName || `Lead-${leadId}`);
     const fileSize = Number(body.fileSize || 0);
+    const mimeType = String(body.mimeType || body.contentType || "");
 
     if (!fileName) {
       return NextResponse.json({ error: "fileName is required." }, { status: 400 });
     }
 
-    const session = await createDirectUploadSession(leadId, leadName, subfolder, fileName);
+    const session = await createDirectUploadSession(
+      leadId,
+      leadName,
+      subfolder,
+      fileName,
+      fileSize,
+      mimeType
+    );
     return NextResponse.json({ ok: true, ...session, fileSize });
   } catch (error) {
     console.error("Upload session error:", error);

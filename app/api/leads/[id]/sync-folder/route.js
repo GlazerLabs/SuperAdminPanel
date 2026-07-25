@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ensureLeadFolder, renameLeadFolder } from "@/lib/onedrive";
+import { ensureLeadFolder, renameLeadFolder } from "@/lib/googledrive";
 
 async function resolveLeadId(params) {
   const resolved = await Promise.resolve(params);
@@ -25,7 +25,7 @@ export async function POST(req, { params }) {
 
     return NextResponse.json({ ok: true, folderId: result?.id, folderName: result?.name || "" });
   } catch (error) {
-    console.error("OneDrive sync folder error:", error);
-    return NextResponse.json({ error: error?.message || "Failed to sync OneDrive folder." }, { status: 500 });
+    console.error("Google Drive sync folder error:", error);
+    return NextResponse.json({ error: error?.message || "Failed to sync Google Drive folder." }, { status: 500 });
   }
 }

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getApi, postApi, putApi, readProfile } from "@/api";
+import { uploadFileDirectToGoogleDrive } from "@/lib/googleDriveUploadClient";
 import { parseIndianRupeeInput } from "@/lib/parseIndianRupee";
 import { useAuthStore } from "@/zustand/auth";
 import { useLeadFormStore, rowToInitialLead } from "@/zustand/leadForm";
@@ -844,96 +845,73 @@ export default function NewLeadPage() {
     return { nextstep: stepNumber };
   };
 
-  const uploadFileToSubfolder = async (leadId, file, subfolder = "Inwards") => {
+  const uploadFileToSubfolder = async (leadId, file, subfolder = "Inwards", progressLabel = "") => {
     if (!leadId || !file) return "";
-    const leadName = lead.brand || selectedLead?.brand || lead.activityName || selectedLead?.activity || `Lead-${leadId}`;
+    const leadName =
+      lead.brand || selectedLead?.brand || lead.activityName || selectedLead?.activity || `Lead-${leadId}`;
     const normalizedSubfolder =
       { inward: "Inward", inwards: "Inward", outward: "Outward", outwards: "Outward" }[
-        subfolder.toLowerCase()
+        String(subfolder || "").toLowerCase()
       ] || subfolder;
 
-    setUploadProgress({ percent: 0, fileName: file.name, subfolder: normalizedSubfolder, stage: "Preparing folder…" });
-
-    const sessionRes = await fetch(`/api/leads/${leadId}/upload-session`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileName: file.name, subfolder, leadName, fileSize: file.size }),
+    setUploadProgress({
+      percent: 1,
+      fileName: file.name,
+      subfolder: normalizedSubfolder,
+      stage: progressLabel || "Preparing Google Drive upload…",
     });
-    const sessionData = await sessionRes.json().catch(() => ({}));
-    if (!sessionRes.ok || !sessionData.uploadUrl) {
-      setUploadProgress(null);
-      throw new Error(sessionData?.error || "Failed to create upload session.");
-    }
 
-    setUploadProgress((p) => ({ ...p, percent: 5, stage: "Uploading to OneDrive…" }));
-
-    const uploadUrl = sessionData.uploadUrl;
-    const totalSize = file.size;
-    const CHUNK_320K = 320 * 1024;
-    const chunkSize = totalSize <= 10 * 1024 * 1024
-      ? CHUNK_320K * 5
-      : totalSize <= 100 * 1024 * 1024
-        ? CHUNK_320K * 10
-        : CHUNK_320K * 30;
-
-    let offset = 0;
-    let lastResult = null;
-    const totalChunks = Math.ceil(totalSize / chunkSize);
-    let chunkIndex = 0;
-
-    while (offset < totalSize) {
-      const end = Math.min(offset + chunkSize, totalSize);
-      const chunk = file.slice(offset, end);
-      const contentRange = `bytes ${offset}-${end - 1}/${totalSize}`;
-
-      const chunkRes = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Range": contentRange },
-        body: chunk,
+    try {
+      const result = await uploadFileDirectToGoogleDrive({
+        leadId,
+        leadName,
+        file,
+        subfolder: normalizedSubfolder,
+        onProgress: (percent, stage) => {
+          setUploadProgress((current) => ({
+            ...current,
+            percent,
+            stage:
+              progressLabel && stage === "Uploading to Google Drive…"
+                ? progressLabel
+                : stage,
+          }));
+        },
       });
-
-      if (!chunkRes.ok && chunkRes.status !== 202) {
-        setUploadProgress(null);
-        const errText = await chunkRes.text().catch(() => "");
-        throw new Error(`Upload failed (${chunkRes.status}): ${errText}`);
-      }
-
-      if (chunkRes.status === 200 || chunkRes.status === 201) {
-        lastResult = await chunkRes.json().catch(() => ({}));
-      }
-
-      chunkIndex++;
-      const percent = Math.min(5 + Math.round((chunkIndex / totalChunks) * 90), 95);
-      setUploadProgress((p) => ({ ...p, percent, stage: "Uploading to OneDrive…" }));
-      offset = end;
-    }
-
-    const webUrl = (typeof lastResult?.webUrl === "string" && lastResult.webUrl.trim()) || "";
-    if (webUrl) {
+      return result.fileWebUrl;
+    } finally {
       setUploadProgress(null);
-      return webUrl;
+    }
+  };
+
+  const uploadSowAndPoFiles = async (leadId) => {
+    const jobs = [];
+    const sowNeedsUpload =
+      String(lead.sowStatus || "").trim() &&
+      String(lead.sowStatus || "").trim().toLowerCase() !== "pending";
+
+    if (sowNeedsUpload && sowUploadFile) {
+      jobs.push({ kind: "SOW", file: sowUploadFile, subfolder: "Inward" });
+    }
+    if (String(lead.poStatus || "").trim() && poUploadFile) {
+      jobs.push({ kind: "PO", file: poUploadFile, subfolder: "Outward" });
     }
 
-    setUploadProgress((p) => ({ ...p, percent: 96, stage: "Finalizing…" }));
+    let sowAttachmentLink = "";
+    let poAttachmentLink = "";
 
-    if (lastResult?.id) {
-      try {
-        const urlRes = await fetch(`/api/leads/${leadId}/upload-session`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ itemId: lastResult.id }),
-        });
-        const urlData = await urlRes.json().catch(() => ({}));
-        setUploadProgress(null);
-        return (typeof urlData?.fileWebUrl === "string" && urlData.fileWebUrl.trim()) || "";
-      } catch {
-        setUploadProgress(null);
-        return "";
-      }
+    for (let i = 0; i < jobs.length; i += 1) {
+      const job = jobs[i];
+      const label = `Uploading ${job.kind} (${i + 1}/${jobs.length}) to Google Drive…`;
+      const link = await uploadFileToSubfolder(leadId, job.file, job.subfolder, label);
+      if (job.kind === "SOW") sowAttachmentLink = link;
+      if (job.kind === "PO") poAttachmentLink = link;
     }
 
-    setUploadProgress(null);
-    return "";
+    if (jobs.some((j) => j.kind === "SOW")) setSowUploadFile(null);
+    if (jobs.some((j) => j.kind === "PO")) setPoUploadFile(null);
+
+    return { sowAttachmentLink, poAttachmentLink };
   };
 
   const uploadProposalFileIfAny = async (leadId) => {
@@ -1038,6 +1016,8 @@ export default function NewLeadPage() {
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Failed to save step", error);
+      setUploadProgress(null);
+      alert(error?.message || "Failed to save step. Please try again.");
     } finally {
       requestLockRef.current = false;
       setSubmitting(false);
@@ -1072,17 +1052,7 @@ export default function NewLeadPage() {
           }
         }
         if (currentStep === 4) {
-          const sowNeedsUpload =
-            String(lead.sowStatus || "").trim() &&
-            String(lead.sowStatus || "").trim().toLowerCase() !== "pending";
-          const sowAttachmentLink =
-            sowNeedsUpload && sowUploadFile
-              ? await uploadFileToSubfolder(selectedLead.id, sowUploadFile, "Inwards")
-              : "";
-          const poAttachmentLink =
-            String(lead.poStatus || "").trim() && poUploadFile
-              ? await uploadFileToSubfolder(selectedLead.id, poUploadFile, "Outwards")
-              : "";
+          const { sowAttachmentLink, poAttachmentLink } = await uploadSowAndPoFiles(selectedLead.id);
           payload = buildStepFourUpdatePayload({ sowAttachmentLink, poAttachmentLink });
         }
         const response = await putApi(
@@ -1120,17 +1090,7 @@ export default function NewLeadPage() {
         }
         let payload = buildUpdatePayloadByStep(currentStep);
         if (currentStep === 4) {
-          const sowNeedsUpload =
-            String(lead.sowStatus || "").trim() &&
-            String(lead.sowStatus || "").trim().toLowerCase() !== "pending";
-          const sowAttachmentLink =
-            sowNeedsUpload && sowUploadFile
-              ? await uploadFileToSubfolder(createdLeadId, sowUploadFile, "Inwards")
-              : "";
-          const poAttachmentLink =
-            String(lead.poStatus || "").trim() && poUploadFile
-              ? await uploadFileToSubfolder(createdLeadId, poUploadFile, "Outwards")
-              : "";
+          const { sowAttachmentLink, poAttachmentLink } = await uploadSowAndPoFiles(createdLeadId);
           payload = buildStepFourUpdatePayload({ sowAttachmentLink, poAttachmentLink });
         }
         const response = await putApi(
@@ -1149,6 +1109,8 @@ export default function NewLeadPage() {
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Failed to save lead", error);
+      setUploadProgress(null);
+      alert(error?.message || "Failed to save lead. Please try again.");
     } finally {
       requestLockRef.current = false;
       setSubmitting(false);
@@ -1192,7 +1154,7 @@ export default function NewLeadPage() {
   const openLeadFolder = async () => {
     const targetLeadId = selectedLead?.id;
     if (!targetLeadId) {
-      alert("Save lead first, then open its OneDrive folder.");
+      alert("Save lead first, then open its Google Drive folder.");
       return;
     }
     try {
@@ -1202,7 +1164,7 @@ export default function NewLeadPage() {
       if (!res.ok || !data?.url) throw new Error(data?.error || "No folder URL found");
       window.open(data.url, "_blank", "noopener,noreferrer");
     } catch (error) {
-      alert(error?.message || "Could not open OneDrive folder");
+      alert(error?.message || "Could not open Google Drive folder");
     }
   };
 
@@ -2497,7 +2459,11 @@ export default function NewLeadPage() {
                 </svg>
               </div>
               <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-slate-900">Uploading file</h3>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  {uploadProgress.stage?.includes("SOW") || uploadProgress.stage?.includes("PO")
+                    ? uploadProgress.stage
+                    : "Uploading file"}
+                </h3>
                 <p className="truncate text-xs text-slate-500">
                   {uploadProgress.fileName}
                   {uploadProgress.subfolder ? ` → ${uploadProgress.subfolder}` : ""}

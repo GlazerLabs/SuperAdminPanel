@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { getApi, patchApi, putApi } from "@/api";
+import { uploadFileDirectToGoogleDrive } from "@/lib/googleDriveUploadClient";
 import { parseIndianRupeeInput } from "@/lib/parseIndianRupee";
 import { rowToInitialLead, useLeadFormStore } from "@/zustand/leadForm";
 
@@ -347,7 +348,9 @@ export default function LeadDetailPage() {
   const [expenseDescriptionInput, setExpenseDescriptionInput] = useState("");
   const [expenseFile, setExpenseFile] = useState(null);
   const [savingExpenseEntry, setSavingExpenseEntry] = useState(false);
+  const [expenseUploadProgress, setExpenseUploadProgress] = useState(null);
   const [uploadingOtherFiles, setUploadingOtherFiles] = useState(false);
+  const [otherUploadProgress, setOtherUploadProgress] = useState(null);
   const uploadOthersInputRef = useRef(null);
 
   const [overviewForm, setOverviewForm] = useState(emptyOverviewForm);
@@ -423,6 +426,7 @@ export default function LeadDetailPage() {
     setExpensePaidToInput("");
     setExpenseDescriptionInput("");
     setExpenseFile(null);
+    setExpenseUploadProgress(null);
     setActionError(null);
     setShowAddExpenseModal(true);
   };
@@ -446,7 +450,7 @@ export default function LeadDetailPage() {
       return;
     }
     if (!expenseFile) {
-      setActionError("Upload a receipt or invoice file — we’ll save a OneDrive share link as proof automatically.");
+      setActionError("Upload a receipt or invoice file — we’ll save a Google Drive share link as proof automatically.");
       return;
     }
 
@@ -454,27 +458,16 @@ export default function LeadDetailPage() {
     setActionError(null);
     setActionOk(null);
     try {
-      const form = new FormData();
-      form.append("file", expenseFile);
-      form.append("subfolder", "Invoices");
-      form.append("leadName", lead.brand || lead.activity || `Lead-${lead.id}`);
-      const uploadRes = await fetch(`/api/leads/${lead.id}/upload`, {
-        method: "POST",
-        body: form,
+      const upload = await uploadFileDirectToGoogleDrive({
+        leadId: lead.id,
+        leadName: lead.brand || lead.activity || `Lead-${lead.id}`,
+        file: expenseFile,
+        subfolder: "Invoices",
+        onProgress: (percent, stage) => {
+          setExpenseUploadProgress({ percent, stage });
+        },
       });
-      const uploadData = await uploadRes.json().catch(() => ({}));
-      if (!uploadRes.ok) {
-        throw new Error(uploadData?.error || "File upload failed.");
-      }
-
-      const fromUpload =
-        typeof uploadData?.fileWebUrl === "string" ? uploadData.fileWebUrl.trim() : "";
-      if (!fromUpload) {
-        throw new Error(
-          "Could not get a link for the uploaded file. Check OneDrive / Graph permissions (createLink)."
-        );
-      }
-      const expenceLink = fromUpload;
+      const expenceLink = upload.fileWebUrl;
 
       const today = new Date().toISOString().slice(0, 10);
       const summaryParts = [
@@ -519,12 +512,13 @@ export default function LeadDetailPage() {
 
       setShowAddExpenseModal(false);
       setActionOk(
-        "Expense saved with OneDrive proof link, timeline updated, and file in the Invoices folder."
+        "Expense saved with Google Drive proof link, timeline updated, and file in the Invoices folder."
       );
       await loadLead();
     } catch (err) {
       setActionError(err?.message || String(err) || "Could not save expense entry.");
     } finally {
+      setExpenseUploadProgress(null);
       setSavingExpenseEntry(false);
     }
   };
@@ -652,10 +646,10 @@ export default function LeadDetailPage() {
       const leadName = encodeURIComponent(lead.brand || lead.activity || `Lead-${lead.id}`);
       const res = await fetch(`/api/leads/${lead.id}/folder-link?leadName=${leadName}`);
       const data = await res.json();
-      if (!res.ok || !data?.url) throw new Error(data?.error || "Could not open OneDrive folder.");
+      if (!res.ok || !data?.url) throw new Error(data?.error || "Could not open Google Drive folder.");
       window.open(data.url, "_blank", "noopener,noreferrer");
     } catch (err) {
-      setActionError(err?.message || "Could not open OneDrive folder.");
+      setActionError(err?.message || "Could not open Google Drive folder.");
     }
   };
 
@@ -676,18 +670,26 @@ export default function LeadDetailPage() {
       const leadName = lead.brand || lead.activity || `Lead-${lead.id}`;
       const failed = [];
 
-      for (const file of files) {
-        const form = new FormData();
-        form.append("file", file);
-        form.append("subfolder", "Others");
-        form.append("leadName", leadName);
-        const res = await fetch(`/api/leads/${lead.id}/upload`, {
-          method: "POST",
-          body: form,
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          failed.push(data?.error || file.name);
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        try {
+          await uploadFileDirectToGoogleDrive({
+            leadId: lead.id,
+            leadName,
+            file,
+            subfolder: "Others",
+            onProgress: (percent, stage) => {
+              setOtherUploadProgress({
+                percent,
+                stage,
+                fileName: file.name,
+                fileNumber: index + 1,
+                totalFiles: files.length,
+              });
+            },
+          });
+        } catch (error) {
+          failed.push(error?.message || file.name);
         }
       }
 
@@ -696,11 +698,12 @@ export default function LeadDetailPage() {
       }
 
       setActionOk(
-        `${files.length} file${files.length > 1 ? "s" : ""} uploaded to OneDrive Others folder.`
+        `${files.length} file${files.length > 1 ? "s" : ""} uploaded to Google Drive Others folder.`
       );
     } catch (err) {
       setActionError(err?.message || "Could not upload files to Others folder.");
     } finally {
+      setOtherUploadProgress(null);
       setUploadingOtherFiles(false);
     }
   };
@@ -1077,7 +1080,7 @@ export default function LeadDetailPage() {
           <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/70 via-white to-cyan-50/50 p-6 shadow-sm sm:p-7">
             <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-slate-500">Lead folder</h3>
             <p className="mt-2 text-sm text-slate-600">
-              Upload directly into OneDrive subfolders for this lead.
+              Upload directly into Google Drive subfolders for this lead.
             </p>
             <div className="mt-4">
               <input
@@ -1093,8 +1096,26 @@ export default function LeadDetailPage() {
                 disabled={uploadingOtherFiles}
                 className="inline-flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {uploadingOtherFiles ? "Uploading..." : "Upload Folder"}
+                {uploadingOtherFiles && otherUploadProgress
+                  ? `Uploading ${otherUploadProgress.percent}% (${otherUploadProgress.fileNumber}/${otherUploadProgress.totalFiles})`
+                  : uploadingOtherFiles
+                    ? "Preparing upload…"
+                    : "Upload Folder"}
               </button>
+              {otherUploadProgress && (
+                <div className="mt-3">
+                  <div className="mb-1 flex justify-between gap-3 text-xs text-slate-500">
+                    <span className="truncate">{otherUploadProgress.fileName}</span>
+                    <span>{otherUploadProgress.percent}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-indigo-600 transition-[width] duration-200"
+                      style={{ width: `${otherUploadProgress.percent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <div className="rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50/65 via-white to-indigo-50/55 p-6 shadow-sm sm:p-7">
@@ -1720,7 +1741,7 @@ export default function LeadDetailPage() {
               </h2>
               <p className="mt-2 max-w-md text-sm leading-relaxed text-white/70">
                 Saved like a follow-up update. Optional file lands in the lead&apos;s{" "}
-                <span className="font-semibold text-white/90">Invoices</span> folder in OneDrive.
+                <span className="font-semibold text-white/90">Invoices</span> folder in Google Drive.
               </p>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
@@ -1744,10 +1765,27 @@ export default function LeadDetailPage() {
                   <span className="font-semibold text-slate-800">Receipt or invoice (required)</span>
                   <input
                     type="file"
+                    disabled={savingExpenseEntry}
                     onChange={(e) => setExpenseFile(e.target.files?.[0] || null)}
                     className="mt-1.5 block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-xs file:font-bold file:text-white file:shadow-sm hover:file:bg-slate-800"
                   />
                 </label>
+                {expenseUploadProgress && (
+                  <div className="sm:col-span-2">
+                    <div className="mb-1.5 flex items-center justify-between gap-3 text-xs text-slate-500">
+                      <span className="truncate">{expenseUploadProgress.stage}</span>
+                      <span className="font-semibold text-indigo-600">
+                        {expenseUploadProgress.percent}%
+                      </span>
+                    </div>
+                    <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full bg-indigo-600 transition-[width] duration-200"
+                        style={{ width: `${expenseUploadProgress.percent}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
                 <label className="block text-sm">
                   <span className="font-semibold text-slate-800">Paid for</span>
                   <input
@@ -1794,7 +1832,11 @@ export default function LeadDetailPage() {
                 onClick={saveExpenseEntry}
                 className="rounded-xl bg-indigo-600 px-5 py-2 text-base font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60"
               >
-                {savingExpenseEntry ? "Saving…" : "Add"}
+                {savingExpenseEntry && expenseUploadProgress
+                  ? `Uploading ${expenseUploadProgress.percent}%`
+                  : savingExpenseEntry
+                    ? "Saving…"
+                    : "Add"}
               </button>
             </div>
           </div>

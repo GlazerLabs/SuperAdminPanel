@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getLeadFolderLink } from "@/lib/onedrive";
+import { getLeadFolderLink } from "@/lib/googledrive";
 
 async function resolveLeadId(params) {
   const resolved = await Promise.resolve(params);
@@ -17,7 +17,7 @@ export async function GET(req, { params }) {
     const url = await getLeadFolderLink(leadId, leadName);
     return NextResponse.json({ url });
   } catch (error) {
-    console.error("OneDrive folder-link error:", error);
-    return NextResponse.json({ error: error?.message || "Failed to generate OneDrive link." }, { status: 500 });
+    console.error("Google Drive folder-link error:", error);
+    return NextResponse.json({ error: error?.message || "Failed to generate Google Drive link." }, { status: 500 });
   }
 }
