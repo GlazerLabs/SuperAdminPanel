@@ -14,10 +14,44 @@ const PERIODS = [
   "Last Month",
   "Quarterly",
   "Overall",
+  "Custom",
 ];
+
+const toYmdLocal = (d) => {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const parseYmdLocal = (ymd) => {
+  const [y, m, d] = String(ymd || "").split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const date = new Date(y, m - 1, d);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatShortRangeLabel = (startYmd, endYmd) => {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const start = parseYmdLocal(startYmd);
+  const end = parseYmdLocal(endYmd);
+  if (!start || !end) return `${startYmd} – ${endYmd}`;
+  const left = `${months[start.getMonth()]} ${start.getDate()}`;
+  const right = `${months[end.getMonth()]} ${end.getDate()}`;
+  return `${left} – ${right}`;
+};
+
+const getDefaultCustomRange = () => {
+  const today = new Date();
+  const start = new Date(today);
+  start.setDate(today.getDate() - 6);
+  return { start: toYmdLocal(start), end: toYmdLocal(today) };
+};
 
 export default function Home() {
   const [activePeriod, setActivePeriod] = useState("Today");
+  const [customStartDate, setCustomStartDate] = useState(() => getDefaultCustomRange().start);
+  const [customEndDate, setCustomEndDate] = useState(() => getDefaultCustomRange().end);
   const [kpi, setKpi] = useState(null);
   const [kpiLoading, setKpiLoading] = useState(true);
   const [kpiError, setKpiError] = useState(null);
@@ -27,13 +61,9 @@ export default function Home() {
   const [copyStatus, setCopyStatus] = useState("idle"); // idle | copied | error
   const [exportStatus, setExportStatus] = useState("idle"); // idle | loading | done | error
 
+  const todayYmd = toYmdLocal(new Date());
+
   const { analyticsQuery, rangeLabelOverride, countStartIso, countEndIso } = useMemo(() => {
-    const toYmdLocal = (d) => {
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      return `${yyyy}-${mm}-${dd}`;
-    };
     const startOfDay = (d) => {
       const x = new Date(d);
       x.setHours(0, 0, 0, 0);
@@ -123,13 +153,31 @@ export default function Home() {
       };
     }
 
+    if (activePeriod === "Custom") {
+      let startYmd = customStartDate;
+      let endYmd = customEndDate;
+      if (startYmd > endYmd) {
+        const tmp = startYmd;
+        startYmd = endYmd;
+        endYmd = tmp;
+      }
+      const start = parseYmdLocal(startYmd) || today;
+      const end = parseYmdLocal(endYmd) || today;
+      return {
+        analyticsQuery: `startDate=${startYmd}&endDate=${endYmd}`,
+        rangeLabelOverride: formatShortRangeLabel(startYmd, endYmd),
+        countStartIso: startOfDay(start).toISOString(),
+        countEndIso: endOfDay(end).toISOString(),
+      };
+    }
+
     return {
       analyticsQuery: "days=7",
       rangeLabelOverride: null,
       countStartIso: startOfDay(today).toISOString(),
       countEndIso: endOfDay(today).toISOString(),
     };
-  }, [activePeriod]);
+  }, [activePeriod, customStartDate, customEndDate]);
 
   useEffect(() => {
     let isMounted = true;
@@ -250,7 +298,8 @@ export default function Home() {
   const useAverageDau =
     activePeriod === "Last Week" ||
     activePeriod === "Last Month" ||
-    activePeriod === "Quarterly";
+    activePeriod === "Quarterly" ||
+    (activePeriod === "Custom" && customStartDate !== customEndDate);
 
   const dauValue = useMemo(() => {
     const chartData = Array.isArray(kpi?.dau?.chartData) ? kpi.dau.chartData : [];
@@ -476,7 +525,7 @@ export default function Home() {
           Platform health and key metrics at a glance.
         </p>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {PERIODS.map((label) => (
               <button
                 key={label}
@@ -491,6 +540,32 @@ export default function Home() {
                 {label}
               </button>
             ))}
+
+            {activePeriod === "Custom" ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-slate-200/80">
+                <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                  From
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    max={customEndDate || todayYmd}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-sm font-medium text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400"
+                  />
+                </label>
+                <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                  To
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    min={customStartDate}
+                    max={todayYmd}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-sm font-medium text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400"
+                  />
+                </label>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
