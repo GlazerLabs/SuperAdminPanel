@@ -353,6 +353,291 @@ export const fetchUsersAnalytics = async (params = {}) => {
   };
 };
 
+const looksLikeListItem = (item) => {
+  if (!item || typeof item !== "object") return false;
+  return (
+    item.id != null ||
+    item.user_id != null ||
+    item.userId != null ||
+    item.team_id != null ||
+    item.teamId != null
+  );
+};
+
+/**
+ * Normalize paginated list payloads from tournament acquisition endpoints.
+ */
+const normalizeAcquisitionListResponse = (response) => {
+  const meta =
+    response?.meta && typeof response.meta === "object" ? response.meta : {};
+
+  let root = {};
+  if (Array.isArray(response?.data)) {
+    const first = response.data[0];
+    root =
+      first && typeof first === "object" && !looksLikeListItem(first)
+        ? first
+        : { list: response.data };
+  } else if (response?.data && typeof response.data === "object") {
+    root = response.data;
+  } else if (response && typeof response === "object") {
+    root = response;
+  }
+
+  const rows = pickFirstArray(
+    root?.users,
+    root?.teams,
+    root?.rows,
+    root?.list,
+    root?.items,
+    root?.data,
+    Array.isArray(root) ? root : null,
+    Array.isArray(response?.data) ? response.data : null
+  );
+
+  const total = pickNum(
+    meta.totalCount,
+    meta.total_count,
+    meta.total,
+    root?.total,
+    root?.total_count,
+    root?.totalCount,
+    response?.total,
+    rows.length
+  );
+
+  const page = pickNum(meta.page, meta.currentPage, root?.page, 1);
+  const limit = pickNum(meta.limit, meta.pageSize, root?.limit, rows.length || 20);
+  const totalPages = pickNum(
+    meta.totalPages,
+    meta.total_pages,
+    root?.totalPages,
+    total > 0 && limit > 0 ? Math.ceil(total / limit) : 1
+  );
+
+  return { rows, total, page, limit, totalPages, raw: response };
+};
+
+const mapAcquiredUserRow = (raw) => {
+  if (!raw || typeof raw !== "object") return null;
+  const id =
+    raw.userId ??
+    raw.user_id ??
+    raw.id ??
+    raw._id ??
+    raw.acquired_user_id;
+  if (id === undefined || id === null) return null;
+
+  const nameCandidate =
+    raw.fullName ??
+    raw.full_name ??
+    raw.name ??
+    raw.display_name ??
+    raw.username ??
+    raw.user_name;
+  const mobileStr = raw.mobile != null ? String(raw.mobile).trim() : "";
+  const name =
+    nameCandidate != null && String(nameCandidate).trim() !== ""
+      ? String(nameCandidate).trim()
+      : mobileStr || "—";
+
+  const emailRaw = raw.email;
+  const email =
+    emailRaw != null && String(emailRaw).trim() !== ""
+      ? String(emailRaw).trim()
+      : "—";
+
+  return {
+    id,
+    name: String(name),
+    username: String(
+      raw.username ?? raw.user_name ?? raw.userName ?? (mobileStr || "—")
+    ),
+    avatar: raw.profile_pic_url ?? raw.profilePicUrl ?? raw.avatar ?? null,
+    contact: mobileStr || "—",
+    email,
+    region: raw.region ?? null,
+    checkInStatus: raw.checkInStatus ?? raw.check_in_status ?? null,
+    teamId: raw.teamId ?? raw.team_id ?? null,
+    teamName: raw.teamName ?? raw.team_name ?? null,
+    teamType: raw.teamType ?? raw.team_type ?? null,
+    roleInTeam: raw.roleInTeam ?? raw.role_in_team ?? null,
+    registeredAt:
+      raw.registeredAt ??
+      raw.registered_at ??
+      raw.acquired_at ??
+      raw.acquiredAt ??
+      null,
+    userCreatedAt:
+      raw.userCreatedAt ??
+      raw.user_created_at ??
+      raw.created_at ??
+      raw.createdAt ??
+      null,
+    _raw: raw,
+  };
+};
+
+/**
+ * Teams endpoint: data[0].teams[] with teamId, teamName, ownerName, …
+ */
+const mapAcquiredTeamRow = (raw) => {
+  if (!raw || typeof raw !== "object") return null;
+
+  const id = raw.teamId ?? raw.team_id ?? raw.id ?? raw._id;
+  if (id === undefined || id === null) return null;
+
+  const nameCandidate =
+    raw.teamName ?? raw.team_name ?? raw.name ?? raw.title;
+  const name =
+    nameCandidate != null && String(nameCandidate).trim() !== ""
+      ? String(nameCandidate).trim()
+      : `Team #${id}`;
+
+  return {
+    id,
+    teamId: id,
+    teamName: String(name),
+    teamCode: raw.teamCode ?? raw.team_code ?? null,
+    teamType: raw.teamType ?? raw.team_type ?? null,
+    teamCreatedAt: raw.teamCreatedAt ?? raw.team_created_at ?? null,
+    ownerId: raw.ownerId ?? raw.owner_id ?? null,
+    ownerName: raw.ownerName ?? raw.owner_name ?? null,
+    memberCount: pickNum(
+      raw.memberCount,
+      raw.member_count,
+      raw.membersCount,
+      raw.members_count
+    ),
+    registeredAt: raw.registeredAt ?? raw.registered_at ?? null,
+    checkInStatus: raw.checkInStatus ?? raw.check_in_status ?? null,
+    region: raw.region ?? null,
+    _raw: raw,
+  };
+};
+
+/**
+ * GET tournament acquisition summary cards.
+ * Query: tournamentId
+ *
+ * Response shape:
+ * { data: [{ acquiredUsers, acquiredTeams, totalRegisteredUsers,
+ *            totalRegisteredTeams, userAcquisitionRate, teamAcquisitionRate }],
+ *   meta: { tournamentId, tournamentTitle, windowStart, windowEnd, … } }
+ */
+export const fetchTournamentAcquisitionSummary = async (tournamentId) => {
+  const response = await getApi("super-admin/tournament-acquisition-summary", {
+    tournamentId: Number(tournamentId) || tournamentId,
+  });
+
+  const root = Array.isArray(response?.data)
+    ? response.data[0] ?? {}
+    : response?.data && typeof response.data === "object"
+      ? response.data
+      : response && typeof response === "object"
+        ? response
+        : {};
+
+  const meta =
+    response?.meta && typeof response.meta === "object" ? response.meta : {};
+
+  const pickRate = (...vals) => {
+    for (const v of vals) {
+      if (v == null) continue;
+      const s = String(v).trim();
+      if (s) return s;
+    }
+    return "0%";
+  };
+
+  return {
+    acquiredUsers: pickNum(root.acquiredUsers, root.acquired_users),
+    acquiredTeams: pickNum(root.acquiredTeams, root.acquired_teams),
+    totalRegisteredUsers: pickNum(
+      root.totalRegisteredUsers,
+      root.total_registered_users
+    ),
+    totalRegisteredTeams: pickNum(
+      root.totalRegisteredTeams,
+      root.total_registered_teams
+    ),
+    userAcquisitionRate: pickRate(
+      root.userAcquisitionRate,
+      root.user_acquisition_rate
+    ),
+    teamAcquisitionRate: pickRate(
+      root.teamAcquisitionRate,
+      root.team_acquisition_rate
+    ),
+    tournamentTitle: meta.tournamentTitle ?? meta.tournament_title ?? null,
+    windowStart: meta.windowStart ?? meta.window_start ?? null,
+    windowEnd: meta.windowEnd ?? meta.window_end ?? null,
+    raw: response,
+    root,
+    meta,
+  };
+};
+
+/**
+ * GET acquired users for a tournament.
+ * Query: tournamentId, search, limit, page
+ */
+export const fetchTournamentAcquiredUsers = async (params = {}) => {
+  const {
+    tournamentId,
+    search = "",
+    limit = 20,
+    page = 1,
+  } = params;
+
+  const response = await getApi("super-admin/tournament-acquired-users", {
+    tournamentId: Number(tournamentId) || tournamentId,
+    search: search || undefined,
+    limit,
+    page,
+  });
+
+  const normalized = normalizeAcquisitionListResponse(response);
+  const rows = normalized.rows.map(mapAcquiredUserRow).filter(Boolean);
+
+  return {
+    ...normalized,
+    rows,
+    total: normalized.total || rows.length,
+  };
+};
+
+/**
+ * GET acquired teams for a tournament.
+ * Query: tournamentId, search, limit, page, excludeSolo
+ */
+export const fetchTournamentAcquiredTeams = async (params = {}) => {
+  const {
+    tournamentId,
+    search = "",
+    limit = 20,
+    page = 1,
+    excludeSolo = true,
+  } = params;
+
+  const response = await getApi("super-admin/tournament-acquired-teams", {
+    tournamentId: Number(tournamentId) || tournamentId,
+    search: search || undefined,
+    limit,
+    page,
+    excludeSolo,
+  });
+
+  const normalized = normalizeAcquisitionListResponse(response);
+  const rows = normalized.rows.map(mapAcquiredTeamRow).filter(Boolean);
+
+  return {
+    ...normalized,
+    rows,
+    total: normalized.total || rows.length,
+  };
+};
+
 export const createOrganizerTeamMember = (payload) =>
   postApi("organizer/create-team", payload);
 
