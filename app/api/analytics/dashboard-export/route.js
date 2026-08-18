@@ -323,10 +323,6 @@ export async function GET(req) {
     const totalAdRequests = daily.reduce((sum, row) => sum + row.adRequests, 0);
     const totalAdImpressions = daily.reduce((sum, row) => sum + row.adImpressions, 0);
     const totalDau = daily.reduce((sum, row) => sum + row.dau, 0);
-    const totalEngagement = daily.reduce(
-      (sum, row) => sum + row.avgTimeSpentSeconds * row.dau,
-      0
-    );
     const totalSessions = daily.reduce((sum, row) => {
       const usage = usageByDate.get(row.date);
       return sum + (usage?.sessions || 0);
@@ -343,7 +339,11 @@ export async function GET(req) {
         totalSessions > 0
           ? Number(((totalCrashEvents / totalSessions) * 100).toFixed(2))
           : 0,
-      avgTimeSpentSeconds: totalDau > 0 ? totalEngagement / totalDau : 0,
+      avgTimeSpentSeconds:
+        daily.length > 0
+          ? daily.reduce((sum, row) => sum + row.avgTimeSpentSeconds, 0) /
+            daily.length
+          : 0,
       adRequests: totalAdRequests,
       adImpressions: totalAdImpressions,
     };

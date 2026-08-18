@@ -191,6 +191,18 @@ function addDaysYmd(ymd, daysToAdd) {
   return toYmd(d);
 }
 
+function eachYmdInclusive(startYmd, endYmd) {
+  const dates = [];
+  const cursor = new Date(`${startYmd}T00:00:00`);
+  const end = new Date(`${endYmd}T00:00:00`);
+  if (Number.isNaN(cursor.getTime()) || Number.isNaN(end.getTime())) return dates;
+  while (cursor <= end) {
+    dates.push(toYmd(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
 async function runReportWithLifetimeFallback(analyticsDataClient, request) {
   try {
     const [res] = await analyticsDataClient.runReport(request);
@@ -266,20 +278,44 @@ export async function GET(req) {
       metrics: [
         { name: "totalUsers" },
         { name: "newUsers" },
-        { name: "activeUsers" },
         { name: "sessions" },
-        { name: "userEngagementDuration" },
       ],
     });
 
     const kpiTotalsRow = kpiTotalsResponse.rows?.[0];
     const totalUsers = Number(kpiTotalsRow?.metricValues?.[0]?.value) || 0;
     const newUsers = Number(kpiTotalsRow?.metricValues?.[1]?.value) || 0;
-    const activeUsers = Number(kpiTotalsRow?.metricValues?.[2]?.value) || 0;
-    const sessions = Number(kpiTotalsRow?.metricValues?.[3]?.value) || 0;
-    const engagementSeconds =
-      Number(kpiTotalsRow?.metricValues?.[4]?.value) || 0;
-    const avgEngagementSeconds = activeUsers > 0 ? engagementSeconds / activeUsers : 0;
+    const sessions = Number(kpiTotalsRow?.metricValues?.[2]?.value) || 0;
+
+    // Avg time spent = mean of daily averages: (day1 + day2 + ... + dayN) / N
+    const [dailyEngagementResponse] = await analyticsDataClient.runReport({
+      property: `properties/${propertyId}`,
+      dateRanges,
+      dimensions: [{ name: "date" }],
+      metrics: [
+        { name: "activeUsers" },
+        { name: "userEngagementDuration" },
+      ],
+    });
+
+    const dailyEngagementByYmd = new Map();
+    for (const row of dailyEngagementResponse.rows || []) {
+      const gaDate = row.dimensionValues?.[0]?.value;
+      if (!gaDate || gaDate.length !== 8) continue;
+      const ymd = `${gaDate.slice(0, 4)}-${gaDate.slice(4, 6)}-${gaDate.slice(6, 8)}`;
+      const dau = Number(row.metricValues?.[0]?.value) || 0;
+      const engagementSeconds = Number(row.metricValues?.[1]?.value) || 0;
+      dailyEngagementByYmd.set(ymd, dau > 0 ? engagementSeconds / dau : 0);
+    }
+
+    const rangeDays = eachYmdInclusive(resolvedStartYmd, resolvedEndYmd);
+    const avgEngagementSeconds =
+      rangeDays.length > 0
+        ? rangeDays.reduce(
+            (sum, ymd) => sum + (dailyEngagementByYmd.get(ymd) || 0),
+            0
+          ) / rangeDays.length
+        : 0;
 
     // Total downloads (GA4 best proxy = first_open event count)
     const [downloadsResponse] = await analyticsDataClient.runReport({
