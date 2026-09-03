@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { BetaAnalyticsDataClient } from "@google-analytics/data";
+import { fetchTrackingInstallsSafe } from "@/lib/trackingInstalls";
 
 function toAdMobDate(ymd) {
   const [year, month, day] = String(ymd || "")
@@ -317,22 +318,13 @@ export async function GET(req) {
           ) / rangeDays.length
         : 0;
 
-    // Total downloads (GA4 best proxy = first_open event count)
-    const [downloadsResponse] = await analyticsDataClient.runReport({
-      property: `properties/${propertyId}`,
-      dateRanges,
-      metrics: [{ name: "eventCount" }],
-      dimensionFilter: {
-        filter: {
-          fieldName: "eventName",
-          stringFilter: {
-            matchType: "EXACT",
-            value: "first_open",
-          },
-        },
-      },
-    });
-    const downloads = Number(downloadsResponse.rows?.[0]?.metricValues?.[0]?.value) || 0;
+    // Total downloads = tracking app-installed events (same source as /app-analytics/installs)
+    const [periodInstalls, lifetimeInstalls] = await Promise.all([
+      fetchTrackingInstallsSafe(resolvedStartYmd, resolvedEndYmd),
+      fetchTrackingInstallsSafe("2026-04-01", toYmd(new Date())),
+    ]);
+    const downloads = periodInstalls.total;
+    const lifetimeTotalDownloads = lifetimeInstalls.total;
 
     // Crash % (proxy = app_exception events / sessions)
     const [crashResponse] = await analyticsDataClient.runReport({
@@ -381,26 +373,6 @@ export async function GET(req) {
     const lifetimeTotalUsers =
       Number(lifetimeUsersResponse.rows?.[0]?.metricValues?.[0]?.value) || 0;
 
-    const lifetimeDownloadsResponse = await runReportWithLifetimeFallback(
-      analyticsDataClient,
-      {
-      property: `properties/${propertyId}`,
-      dateRanges: lifetimeDateRanges,
-      metrics: [{ name: "eventCount" }],
-      dimensionFilter: {
-        filter: {
-          fieldName: "eventName",
-          stringFilter: {
-            matchType: "EXACT",
-            value: "first_open",
-          },
-        },
-      },
-      }
-    );
-    const lifetimeTotalDownloads =
-      Number(lifetimeDownloadsResponse.rows?.[0]?.metricValues?.[0]?.value) || 0;
-
     // Usage & revenue time series
     const [usageResponse] = await analyticsDataClient.runReport({
       property: `properties/${propertyId}`,
@@ -437,34 +409,10 @@ export async function GET(req) {
         ? (((currentRevenue - previousRevenue) / previousRevenue) * 100).toFixed(1)
         : 0;
 
-    // Installs time series (best GA4 proxy = first_open event count)
-    const [installsResponse] = await analyticsDataClient.runReport({
-      property: `properties/${propertyId}`,
-      dateRanges,
-      dimensions: [{ name: "date" }],
-      metrics: [{ name: "eventCount" }],
-      dimensionFilter: {
-        filter: {
-          fieldName: "eventName",
-          stringFilter: {
-            matchType: "EXACT",
-            value: "first_open",
-          },
-        },
-      },
-    });
-
-    const installsChartData =
-      installsResponse.rows
-        ?.map((row) => ({
-          rawDate: row.dimensionValues[0].value,
-          installs: parseInt(row.metricValues[0].value) || 0,
-        }))
-        .sort((a, b) => (a.rawDate > b.rawDate ? 1 : a.rawDate < b.rawDate ? -1 : 0))
-        .map((row) => ({
-          date: formatGaDate(row.rawDate),
-          installs: row.installs,
-        })) || [];
+    const installsChartData = rangeDays.map((ymd) => ({
+      date: formatGaDate(ymd.replaceAll("-", "")),
+      installs: periodInstalls.byDate.get(ymd) || 0,
+    }));
 
     const totalInstalls = installsChartData.reduce(
       (sum, row) => sum + (row.installs || 0),

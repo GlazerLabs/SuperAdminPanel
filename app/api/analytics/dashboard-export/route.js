@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { BetaAnalyticsDataClient } from "@google-analytics/data";
+import { fetchTrackingInstallsSafe } from "@/lib/trackingInstalls";
 
 function toAdMobDate(ymd) {
   const [year, month, day] = String(ymd || "")
@@ -240,7 +241,7 @@ export async function GET(req) {
     const resolvedEndYmd = toYmd(today);
     const dateRanges = [{ startDate: resolvedStartYmd, endDate: resolvedEndYmd }];
 
-    const [usageResponse, downloadsByDate, crashesByDate, adMobByDate, mau28Response, lifetimeUsersResponse] =
+    const [usageResponse, trackingInstalls, crashesByDate, adMobByDate, mau28Response, lifetimeUsersResponse] =
       await Promise.all([
         analyticsDataClient.runReport({
           property: `properties/${propertyId}`,
@@ -253,7 +254,7 @@ export async function GET(req) {
             { name: "userEngagementDuration" },
           ],
         }),
-        runGaDailyEventReport(analyticsDataClient, propertyId, dateRanges, "first_open"),
+        fetchTrackingInstallsSafe(resolvedStartYmd, resolvedEndYmd),
         runGaDailyEventReport(analyticsDataClient, propertyId, dateRanges, "app_exception"),
         getAdMobDaily({ startYmd: resolvedStartYmd, endYmd: resolvedEndYmd }),
         analyticsDataClient.runReport({
@@ -298,7 +299,7 @@ export async function GET(req) {
         sessions: 0,
         engagementSeconds: 0,
       };
-      const downloads = downloadsByDate.get(date) || 0;
+      const downloads = trackingInstalls.byDate.get(date) || 0;
       const crashEvents = crashesByDate.get(date) || 0;
       const adMob = adMobByDate.get(date) || { adRequests: 0, adImpressions: 0 };
       const crashPercent =
